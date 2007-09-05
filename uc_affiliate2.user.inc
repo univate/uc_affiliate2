@@ -194,7 +194,7 @@ function _uc_affiliate2_display_products($products) {
 
 function _uc_affiliate2_product_form(&$form_state, $products, $user) {
   drupal_add_js(drupal_get_path('module', 'uc_affiliate2') .'/uc_affiliate2.js');
-  
+
   $form['uid'] = array('#type' => 'value', '#value' => $user->uid);
 
   $form['products'] = array(
@@ -432,13 +432,13 @@ function uc_affiliate2_click_details($user) {
     } else {
       $click['referrer'] = 'N/A';
     }
-    
+
     if ($click['destination']) {
       $click['destination'] = l(t('Destination'), $click['destination']); // make it a link
     } else {
       $click['destination'] = 'Frontpage';
     }
-    
+
     $rows[] = array(format_date($click['time'], 'custom', 'Y/m/d H:i:s'),
                     $click['client_ip'] ? $click['client_ip'] : 'N/A',
                     $click['referrer'],
@@ -624,13 +624,13 @@ function uc_affiliate2_product_commission($node) {
   // Get commission structure for this product
   $commission_structure = 0;
   $result = db_query("SELECT commission_structure FROM {uc_affiliate2_product_commission} WHERE nid = %d", $node->nid);
-  
+
   if ($product_commission = db_fetch_object($result)) {
     $commission_structure = $product_commission->commission_structure;
   }
 
   $output .= drupal_get_form('uc_affiliate2_product_commission_form', $commission_structure, $node->nid);
-  
+
   return $output;
 }
 
@@ -654,7 +654,7 @@ function uc_affiliate2_product_commission_form($form_state, $commission_structur
     '#type' => 'submit',
     '#value' => t('Save'),
   );
-  
+
   return $form;
 }
 

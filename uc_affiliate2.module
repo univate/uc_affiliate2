@@ -68,7 +68,7 @@ function uc_affiliate2_menu() {
     'type' => MENU_LOCAL_TASK,
     'file' => 'uc_affiliate2.admin.inc',
   );
-  
+
   // The path for affiliate links defaults to /affiliate/[uid]
   // however, this can be overridden by adding the following line
   // $conf['uc_affiliate2_path'] = 'my_affiliate_path'
@@ -291,7 +291,7 @@ function _uc_affiliate2_get_products($mode = 'form', $show = array()) {
 
     $title = check_plain($product->title);
     $description = str_replace('"', "'", strip_tags($product->body));
-    
+
     $context = array(
       'revision' => 'themed',
       'type' => 'product',
@@ -299,7 +299,7 @@ function _uc_affiliate2_get_products($mode = 'form', $show = array()) {
       'field' => 'sell_price',
       'subject' => array('node' => $product),
     );
-    
+
     $price = uc_price($product->sell_price, $context, array('label' => FALSE));
 
     switch ($mode) {
@@ -880,7 +880,7 @@ function uc_affiliate2_click($username = 0) {
       $found_affiliate = TRUE;
     }
   }
-  else if (is_string($username)) { // old url's (affiliate/username, 
+  else if (is_string($username)) { // old url's (affiliate/username,
     $found_affiliate = FALSE;
     $account = user_load(array('name' => $username));
 
@@ -1000,7 +1000,7 @@ function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
   //check if this product has commission set for it
   $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $nid));
   $product_commission_structure = unserialize($result->commission_structure);
-  
+
   // if the commission is defined, and this product is alone in the cart
   if ($product_commission_structure && (count($nids) === 1)) {
     $default_structure = $product_commission_structure;

@@ -258,11 +258,11 @@ function uc_affiliate2_admin_settings() {
     '#description' => t("If enabled, on subsequent orders after a user has made a purchase will grant commissions to the original affiliate if no affiliate information is available from the session or cookie."),
     '#default_value' => variable_get('affiliate_enable_recurring_commission', 0),
   );
-  
+
   foreach (_payment_method_list() as $method) {
     $payment_methods[$method['id']] = $method['name'];
   }
-  
+
   $form['affiliate_no_commission_payment_methods'] = array(
     '#type' => 'checkboxes',
     '#title' => t('Disable commission for these Payment methods'),
