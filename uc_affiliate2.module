@@ -596,6 +596,12 @@ function uc_affiliate2_admin_settings() {
     '#description' => t("If enabled, this module will record affiliate actions if customers visit the site through an affiliate subdomain, like john.thissite.com. Enable this only if drupal is not installed on a subdomain."),
     '#default_value' => variable_get('affiliate_enable_subdomain_handling', 0),
   );
+  $form['affiliate_enable_recurring_commission'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable affiliate commissions for subsequent orders'),
+    '#description' => t("If enabled, on subsequent orders after a user has made a purchase will grant commissions to the original affiliate if no affiliate information is available from the session or cookie."),
+    '#default_value' => variable_get('affiliate_enable_recurring_commission', 0),
+  );
   
   foreach (_payment_method_list() as $method) {
     $payment_methods[$method['id']] = $method['name'];
@@ -1453,6 +1459,62 @@ function uc_affiliate2_add_to_cart_data($form_values) {
   }
 }
 
+/**
+ * Implementation of hook_form_FORM-ID_alter().
+ *
+ * Form - uc_order_view_update_form
+ */
+function uc_affiliate2_form_uc_order_view_update_form_alter(&$form, $form_state) {
+  if (user_access('adjust user commissions')) {
+    $form['affiliate'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Affiliate commissions'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+
+    $form['affiliate']['affiliate_op'] = array(
+      '#type' => 'select',
+      '#title' => t('Operation'),
+      '#options' => array(
+        '' => t('Select operation to perform..'),
+        'credit' => t('Re-apply affiliate commision.'),
+        'remove' => t('Remove affiliate commission.')
+      )
+    );
+    $form['affiliate']['affiliate_id'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Affiliate id to credit commissions to'),
+      '#description' => t('Leave blank to match any affiliates.'),
+      '#default_value' => _uc_affiliate2_get_user($form['#parameters'][2]->uid),
+      '#size' => 20,
+    );
+    $form['#submit'][] = 'uc_affiliate2_order_view_update_form_submit';
+  }
+}
+
+/**
+ *
+ */
+function uc_affiliate2_order_view_update_form_submit($form, &$form_state) {
+  $order = uc_order_load($form_state['values']['order_id']);
+
+  switch($form_state['values']['affiliate_op']) {
+    case 'credit':
+      if (empty($form_state['values']['affiliate_id'])) {
+        if ($aid = _uc_affiliate2_get_user($order->uid)) {
+          $form_state['values']['affiliate_id'] = $aid;
+        }
+      }
+      uc_affiliate2_apply_commission($order, $form_state['values']['affiliate_id']);
+      break;
+
+    case 'remove':
+      uc_affiliate2_remove_commission($order, $form_state['values']['affiliate_id']);
+      break;
+  }
+}
+
 /*
  * Implementation of hook_order
  * Tracks affiliate commissions
@@ -1462,6 +1524,12 @@ function uc_affiliate2_order($op, $order, $status) {
 
   $statuses = variable_get('affiliate_commission_order_statuses', array('completed' => 'completed'));
 
+  if (variable_get('affiliate_enable_recurring_commission', 0)) {
+    if ($aid = _uc_affiliate2_get_user($order->uid)) {
+      $_SESSION['affiliate'] = $aid;
+    }
+  }
+
   if($op == 'new' && $_SESSION['affiliate']) {
     db_query('INSERT INTO {uc_affiliate2_orders} (aid, order_id) VALUES (%d, %d)', $_SESSION['affiliate'], $order->order_id);
   } else if($op == 'delete') {
@@ -1470,78 +1538,116 @@ function uc_affiliate2_order($op, $order, $status) {
 
   // give commissions
   if ($op == 'update' && $statuses[$status] && !$statuses[$order->order_status]) {
-    // order ready for commission assignment
-    // find all affiliates included in order
-    $affcom = array();
-    
-    $no_commmission_methods = array_flip(variable_get('affiliate_no_commission_payment_methods',array()));
-    
-    // we shouldn't give commissions on these payment methods.
-    if(array_key_exists($order->payment_method, $no_commmission_methods)) {
-      return;  
-    }
-    
-    $context = array(
-      'revision' => 'altered',
-      'type' => 'order_product',
-      'subject' => array('order' => $order),
-    );
-    
-    // sum the prices of products from each affiliate store
-    $nids = array();
-    foreach ($order->products as $product) {
-      if (isset($product->data['affiliate'])) {
-        $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $product->nid));
-        $product_commission_structure = unserialize($result->commission_structure);
-        
-        // If the commission is specifically "0", then we ignore this product.
-        if ($product_commission_structure === '0') {
-          continue;
-        }
-        
-        $price_info = array(
-          'price' => $product->price,
-          'qty' => ($product->qty) ? $product->qty : 1,
-        );
-        $context['subject']['product'] = $product;
-        $context['subject']['node'] = node_load($product->nid);
-        $price = uc_price($price_info, $context);
-
-        $aff = $product->data['affiliate'];
-        $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
-        $affcom[$aff]['nid'] = $product->nid;
-      }
-    }
-    
-    // node ids of each product. If there is only one product, we can use per product commissions
-    $nids = array_unique($nids);
-
-    // write commission records
-    foreach ($affcom as $affid => $data) {
-      $affs = _uc_affiliate2_get_upline_ids($affid);
-
-      for ($i=0; $i<count($affs); $i++) {
-        $aff = $affs[$i];
-        $level = $i + 1;
-        $comm_pct = _uc_affiliate2_get_commission_percentage($level, $data['nid'], $nids);
-        if ($comm_pct > 0) {
-          //TODO should this be rounded to nearest penny???
-          $comm = $data['total'] * $comm_pct;
-          $note = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
-          db_query("INSERT INTO {uc_affiliate2_commission} (order_id, aid, commission, commission_notes) VALUES (%d, %d, %f, '%s')", $order->order_id, $aff, $comm, $note);
-          uc_order_comment_save($order->order_id, $user->uid, $note);
-        }
-      }
-    }
+    uc_affiliate2_apply_commission($order, $_SESSION['affiliate']);
   }
 
   // take commissions ( moving from a "give commissions" status to a one that doesn't have that privillege)
   if($op == 'update' && $statuses[$order->order_status] && $status && !$statuses[$status]) {
+    uc_affiliate2_remove_commission($order);
+  }
+}
+
+/**
+ * uc_affiliate2 helper methods
+ */
+
+/**
+ * Apply commission owed to an order.
+ *
+ * @param $order
+ *   Ubercart order object.
+ * @param $affiliate_id
+ *   Affiliate ID to apply commission if there are no product specific commissions.
+ */
+function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
+  // order ready for commission assignment
+  // find all affiliates included in order
+  $affcom = array();
+
+  $no_commmission_methods = array_flip(variable_get('affiliate_no_commission_payment_methods',array()));
+
+  // we shouldn't give commissions on these payment methods.
+  if(array_key_exists($order->payment_method, $no_commmission_methods)) {
+    return;
+  }
+
+  $context = array(
+    'revision' => 'altered',
+    'type' => 'order_product',
+    'subject' => array('order' => $order),
+  );
+
+  // sum the prices of products from each affiliate store
+  $nids = array();
+  foreach ($order->products as $product) {
+    $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $product->nid));
+    $product_commission_structure = unserialize($result->commission_structure);
+
+    // If the commission is specifically "0", then we ignore this product.
+    if ($product_commission_structure === '0') {
+      continue;
+    }
+
+    $price_info = array(
+      'price' => $product->price,
+      'qty' => ($product->qty) ? $product->qty : 1,
+    );
+    $context['subject']['product'] = $product;
+    $context['subject']['node'] = node_load($product->nid);
+    $price = uc_price($price_info, $context);
+
+    if (isset($product->data['affiliate'])) {
+      $aff = $product->data['affiliate'];
+    }
+    else if (empty($affiliate_id)) {
+      continue;
+    }
+    else {
+      $aff = $affiliate_id;
+    }
+    $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
+    $affcom[$aff]['nid'] = $product->nid;
+  }
+
+  // node ids of each product. If there is only one product, we can use per product commissions
+  $nids = array_unique($nids);
+
+  // write commission records
+  foreach ($affcom as $affid => $data) {
+    $affs = _uc_affiliate2_get_upline_ids($affid);
+
+    for ($level=1; $level<=count($affs); $level++) {
+      $aff = $affs[$level-1];
+      $comm_pct = _uc_affiliate2_get_commission_percentage($level, $data['nid'], $nids);
+      if ($comm_pct > 0) {
+        $comm = new stdClass();
+        $comm->order_id = $order->order_id;
+        $comm->aid = $aff;
+        //TODO should this be rounded to nearest penny???
+        $comm->commission = $data['total'] * $comm_pct;
+        $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
+        uc_affiliate2_save_commission($comm);
+      }
+    }
+  }
+}
+
+/**
+ * Remove affiliate commission from an order.
+ *
+ * @param $order
+ *   Ubercart order object.
+ * @param $affiliate_id
+ *   Affiliate ID to remove commissions from (default is all affiliates on the order).
+ */
+function uc_affiliate2_remove_commission($order, $affiliate_id = NULL) {
     $result = db_query("SELECT aid FROM {uc_affiliate2_commission} WHERE order_id = %d", $order->order_id);
     $affiliates = array();
 
     while($affiliate = db_fetch_array($result)) {
-      $affiliates[] = $affiliate['aid'];
+      if (empty($affiliate_id) || $affiliate['aid'] == $affiliate_id) {
+        $affiliates[] = $affiliate['aid'];
+      }
     }
 
     if(count($affiliates) < 1) { // not an affiliate order
@@ -1554,13 +1660,30 @@ function uc_affiliate2_order($op, $order, $status) {
       $note = t('Removed commission recorded for affiliate uid: @affiliate', array('@affiliate' => $affiliate));
       uc_order_comment_save($order->order_id, $user->uid, $note);
     }
-  }
 }
 
-
 /**
- * uc_affiliate2 helper methods
+ * Saves a affiliate commission.
+ *
+ * @param $comm
+ *   A commission object.
  */
+function uc_affiliate2_save_commission($comm) {
+  global $user;
+  // Update an existing row.
+  drupal_alter('affiliate2_commission', $comm);
+
+  if (!empty($comm->commission_id)) {
+    // Update an existing row.
+    drupal_write_record('uc_affiliate2_commission', $comm, array('commission_id'));
+  }
+  else {
+    drupal_write_record('uc_affiliate2_commission', $comm);
+  }
+  uc_order_comment_save($comm->order_id, $user->uid, $comm->commission_notes);
+
+  return $comm->commission_id;
+}
 
 /*
  * Period Selection form
