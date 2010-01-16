@@ -1,0 +1,14 @@
+; $Id: uc_affiliate2.info,v 1.2.2.1 2009/03/05 23:50:48 bojanz Exp $
+name = Affiliate2
+description = Tracks affiliate site orders and commissions.
+dependencies[] = uc_store
+dependencies[] = uc_order
+package = Ubercart - extra
+
+core = 6.x
+; Information added by drupal.org packaging script on 2009-12-21
+version = "6.x-2.5-rc1"
+core = "6.x"
+project = "uc_affiliate2"
+datestamp = "1261408302"
+

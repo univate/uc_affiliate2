@@ -1,0 +1,202 @@
+<?php
+// $Id: uc_affiliate2.install,v 1.2.2.5 2009/05/04 19:59:34 bojanz Exp $
+
+/**
+ * Implementation of hook_schema().
+ */
+function uc_affiliate2_schema() {
+  $schema['uc_affiliate2_users'] = array(
+    'description' => t('Which affiliate referred a user to the site'),
+    'fields' => array(
+      'aid' => array(
+        'description' => t('Affiliate ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => t('New user ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('aid', 'uid'),
+  );
+
+  $schema['uc_affiliate2_orders'] = array(
+    'description' => t('Orders made with a specific affiliate id'),
+    'fields' => array(
+      'aid' => array(
+        'description' => t('Affiliate ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'order_id' => array(
+        'description' => t('Order ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('aid', 'order_id'),
+  );
+
+  $schema['uc_affiliate2_clicks'] = array(
+    'description' => t('Unique Clicks, by affiliate'),
+    'fields' => array(
+      'click_id' => array(
+        'type' => 'serial',
+        'size' => 'medium',
+        'not null' => TRUE,
+      ),
+      'aid' => array(
+        'description' => t('Affiliate ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'time' => array(
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'cookie_status' => array(
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+      ),
+      'client_ip' => array(
+        'type' => 'varchar',
+        'length' => 50,
+        'not null' => FALSE,
+      ),
+      'referrer' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'destination' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('click_id'),
+  );
+
+  $schema['uc_affiliate2_commission'] = array(
+    'description' => t('Where we track affiliate commissions'),
+    'fields' => array(
+      'commission_id' => array(
+        'type' => 'serial',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+      'order_id' => array(
+        'type' => 'int',
+        'size' => 'big',
+        'not null' => FALSE,
+      ),
+      'aid' => array(
+        'description' => t('Affiliate ID'),
+        'type' => 'int',
+        'size' => 'big',
+        'not null' => FALSE,
+      ),
+      'commission' => array(
+        'description' => t('Commission amount'),
+        'type' => 'float',
+        'size' => 'big',
+        'not null' => FALSE,
+      ),
+      'commission_notes' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('commission_id'),
+  );
+
+  $schema['uc_affiliate2_paid'] = array(
+    'description' => t('Where we track affiliate commission payments'),
+    'fields' => array(
+      'aid' => array(
+        'description' => t('Affiliate ID'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'date' => array(
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+      ),
+      'amount' => array(
+        'type' => 'float',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+    ),
+  );
+
+  $schema['uc_affiliate2_product_commission'] = array(
+    'description' => t('Where we store product level comissions, if any'),
+    'fields' => array(
+      'nid' => array(
+        'type' => 'int',
+        'size' => 'medium',
+        'not null' => TRUE,
+      ),
+      'commission_structure' => array(
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('nid'),
+  );
+
+  return $schema;
+}
+
+function uc_affiliate2_install() {
+  drupal_install_schema('uc_affiliate2');
+}
+
+function uc_affiliate2_uninstall() {
+  drupal_uninstall_schema('uc_affiliate2');
+}
+
+function uc_affiliate2_update_1() {
+  $items = array();
+  $items[] = update_sql("CREATE TABLE {uc_affiliate2_orders} (
+        aid int unsigned NOT NULL,
+        order_id int unsigned UNIQUE NOT NULL,
+        PRIMARY KEY (aid,order_id)
+        ) /*!40100 DEFAULT CHARACTER SET utf8 */
+      ");
+  $items[] = update_sql("DROP TABLE {uc_affiliate2_counts}");
+
+  return $items;
+}
+
+// a bug created rows even when there was no aid
+function uc_affiliate2_update_2() {
+  $items = array();
+  $items[] = update_sql("DELETE FROM {uc_affiliate2_orders} WHERE aid = 0");
+
+  return $items;
+}
+
+function uc_affiliate2_update_3() {
+  $items = array();
+  $items[] = update_sql("ALTER TABLE {uc_affiliate2_clicks} ADD COLUMN cookie_status tinyint;");
+  $items[] = update_sql("ALTER TABLE {uc_affiliate2_clicks} ADD COLUMN client_ip varchar(50);");
+  $items[] = update_sql("ALTER TABLE {uc_affiliate2_clicks} ADD COLUMN referrer varchar(255);");
+  $items[] = update_sql("ALTER TABLE {uc_affiliate2_clicks} ADD COLUMN destination varchar(255);");
+
+  return $items;
+}
