@@ -408,3 +408,97 @@ function uc_affiliate2_monthly_report() {
 
   return $output;
 }
+
+/**
+ *
+ */
+function uc_affiliate2_order_commissions($order_id) {
+  $result = db_query('SELECT ac.commission_id, ac.aid, u.name, ac.commission, ac.commission_notes   
+                      FROM {uc_affiliate2_commission} ac
+                        LEFT JOIN {users} as u ON u.uid=ac.aid
+                      WHERE ac.order_id=%d', $order_id);
+
+  $context = array(
+    'revision' => 'themed',
+    'type' => 'product',
+  );
+
+  $rows = array();
+  while ($commission = db_fetch_object($result)) {
+    $rows[] = array(
+      l($commission->name, 'user/'. $commission->aid),
+      uc_price($commission->commission, $context),
+      $commission->commission_notes,
+      l('edit', 'admin/store/orders/'. $order_id .'/affiliates/'. $commission->commission_id .'/edit', array('attributes' => array('class' => 'edit'))) .' | '.
+      l('remove', 'admin/store/orders/'. $order_id .'/affiliates/'. $commission->commission_id .'/remove')
+    );
+  }
+  return theme('table', array('Affiliate', 'Commission', 'Notes', ''), $rows);
+}
+
+/**
+ * Manually edit a commission on an order.
+ */
+function uc_affiliate2_order_edit_commissions($form_state, $order_id, $commission_id) {
+  $commission = db_fetch_object(db_query("SELECT commission_id, aid, commission, commission_notes FROM {uc_affiliate2_commission} WHERE commission_id=%d", $commission_id));
+
+  $form['commission_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $commission->commission_id
+  );
+  $form['order_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $order_id
+  );
+  $form['commission'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Commission Amount'),
+    '#default_value' => $commission->commission,
+  );
+  $form['commission_notes'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Commission Note'),
+    '#default_value' => $commission->commission_notes,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Update commission'),
+    '#suffix' => l(t('Cancel'), uc_referer_uri()),
+  );
+  return $form;
+}
+
+function uc_affiliate2_order_edit_commissions_submit($form, &$form_state) {
+  $commission = db_fetch_object(db_query("SELECT * FROM {uc_affiliate2_commission} WHERE commission_id=%d", $form_state['values']['commission_id']));
+  $commission->commission = $form_state['values']['commission'];
+  $commission->commission_notes = $form_state['values']['commission_notes'];
+  uc_affiliate2_save_commission($commission);
+  $form_state['redirect'] = 'admin/store/orders/'. $form_state['values']['order_id'] .'/affiliates';
+}
+
+/**
+ * Delete a commission from an order.
+ */
+function uc_affiliate2_order_remove_commissions($form_state, $order_id, $commission_id) {
+  $form['commission_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $commission_id
+  );
+  $form['order_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $order_id
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Remove commission'),
+    '#suffix' => l(t('Cancel'), uc_referer_uri()),
+  );
+
+
+  return $form;
+}
+
+function uc_affiliate2_order_remove_commissions_submit($form, &$form_state) {
+  db_query('DELETE FROM {uc_affiliate2_commission} WHERE commission_id=%d', $form_state['values']['commission_id']);
+  $form_state['redirect'] = 'admin/store/orders/'. $form_state['values']['order_id'] .'/affiliates';
+}

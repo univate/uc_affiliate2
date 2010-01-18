@@ -69,6 +69,36 @@ function uc_affiliate2_menu() {
     'file' => 'uc_affiliate2.admin.inc',
   );
 
+  $items['admin/store/orders/%/affiliates'] = array(
+    'title' => 'Affiliate Commissions',
+    'page callback' => 'uc_affiliate2_order_commissions',
+    'page arguments' => array(3),
+    'access arguments' => $access,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'uc_affiliate2.admin.inc',
+    'weight' => 5,
+  );
+
+  $items['admin/store/orders/%/affiliates/%/edit'] = array(
+    'title' => 'Edit affiliate Commissions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_affiliate2_order_edit_commissions', 3, 5),
+    'access arguments' => $access,
+    'type' => MENU_CALLBACK,
+    'file' => 'uc_affiliate2.admin.inc',
+  );
+
+  $items['admin/store/orders/%/affiliates/%/remove'] = array(
+    'title' => 'Remove Affiliate Commissions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_affiliate2_order_remove_commissions', 3, 5),
+    'access arguments' => $access,
+    'type' => MENU_CALLBACK,
+    'file' => 'uc_affiliate2.admin.inc',
+  );
+
+
+
   // The path for affiliate links defaults to /affiliate/[uid]
   // however, this can be overridden by adding the following line
   // $conf['uc_affiliate2_path'] = 'my_affiliate_path'
