@@ -462,7 +462,7 @@ function uc_affiliate2_form_uc_order_view_update_form_alter(&$form, $form_state)
     );
     $form['affiliate']['affiliate_id'] = array(
       '#type' => 'textfield',
-      '#title' => t('Affiliate id to credit commissions to'),
+      '#title' => t('Affiliate id to credit or remove commissions on'),
       '#description' => t('Leave blank to match any affiliates.'),
       '#default_value' => _uc_affiliate2_get_user($form['#parameters'][2]->uid),
       '#size' => 20,
@@ -484,7 +484,11 @@ function uc_affiliate2_order_view_update_form_submit($form, &$form_state) {
           $form_state['values']['affiliate_id'] = $aid;
         }
       }
-      uc_affiliate2_apply_commission($order, $form_state['values']['affiliate_id']);
+      $affiliate_id = $form_state['values']['affiliate_id'];
+      foreach ($order->products as $index => $product) {
+        $order->products[$index]->data['affiliate'] = $affiliate_id;
+      }
+      uc_affiliate2_apply_commission($order, $affiliate_id);
       break;
 
     case 'remove':
