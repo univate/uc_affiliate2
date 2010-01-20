@@ -413,7 +413,7 @@ function uc_affiliate2_monthly_report() {
  *
  */
 function uc_affiliate2_order_commissions($order_id) {
-  $result = db_query('SELECT ac.commission_id, ac.aid, u.name, ac.commission, ac.commission_notes   
+  $result = db_query('SELECT ac.commission_id, ac.aid, u.name, ac.commission, ac.commission_notes
                       FROM {uc_affiliate2_commission} ac
                         LEFT JOIN {users} as u ON u.uid=ac.aid
                       WHERE ac.order_id=%d', $order_id);
