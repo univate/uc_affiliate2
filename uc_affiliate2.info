@@ -1,4 +1,4 @@
-; $Id: uc_affiliate2.info,v 1.2.2.1 2009/03/05 23:50:48 bojanz Exp $
+; $Id: uc_affiliate2.info,v 1.2.2.2 2010/02/01 06:27:13 univate Exp $
 name = Affiliate2
 description = Tracks affiliate site orders and commissions.
 dependencies[] = uc_store
