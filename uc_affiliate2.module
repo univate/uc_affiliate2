@@ -1075,6 +1075,12 @@ function _uc_affiliate2_get_user($uid) {
 
 /**
  * Get an affiliates commission percentage for the given level
+ *
+ * @param $level
+ *   The affiliate commission being obtained.
+ * @param $nid
+ *   The node ID of the product being purchased.
+ * @param $has_
  */
 function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
   global $user;

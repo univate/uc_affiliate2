@@ -181,7 +181,7 @@ function uc_affiliate2_ca_trigger() {
 
 /**
  * Check if the order contains a renewal product.
- * 
+ *
  * @param $order
  *   The order object.
  * @param $recurring_fee
