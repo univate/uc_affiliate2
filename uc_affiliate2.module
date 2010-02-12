@@ -600,7 +600,7 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
 
     for ($level=1; $level<=count($affs); $level++) {
       $aff = $affs[$level-1];
-      $comm_pct = _uc_affiliate2_get_commission_percentage($level, $data['nid'], $nids);
+      $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $data['nid'], (count($nids) != 1));
       if ($comm_pct > 0) {
         $comm = new stdClass();
         $comm->order_id = $order->order_id;
@@ -1075,14 +1075,27 @@ function _uc_affiliate2_get_user($uid) {
 
 /**
  * Get an affiliates commission percentage for the given level
+ *
+ * @param $aff_id
+     ID of the affiliate.
+ * @param $level
+ *   The affiliate commission being obtained.
+ * @param $nid
+ *   The node ID of the product being purchased.
+ * @param $single_product
+ *   TRUE if only one product on the order.
+ *
+ * @return
+ *   Commission percentate as a value between 0 and 1.
  */
-function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
+function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0, $single_product = FALSE) {
   global $user;
 
-  $account = user_load(array('uid' => $_SESSION['affiliate']));
-
-  if ($account->commission) {
-    return $account->commission / 100; // we have a commission percentage defined specially for this affilate
+  if ($level == 1) {
+    $account = user_load(array('uid' => $aff_id));
+    if (is_numeric($account->commission)) {
+      return $account->commission / 100; // we have a commission percentage defined specially for this affilate
+    }
   }
 
   $depth = variable_get('affiliate_hierarchy_depth', 5);
@@ -1092,7 +1105,7 @@ function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
   $product_commission_structure = unserialize($result->commission_structure);
 
   // if the commission is defined, and this product is alone in the cart
-  if ($product_commission_structure && (count($nids) === 1)) {
+  if ($product_commission_structure && $single_product) {
     $default_structure = $product_commission_structure;
   }
   else {
