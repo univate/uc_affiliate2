@@ -151,7 +151,7 @@ function uc_affiliate2_ca_trigger() {
 
 /**
  * Check if the order contains a renewal product.
- * 
+ *
  * @param $order
  *   The order object.
  * @param $recurring_fee
@@ -225,7 +225,7 @@ function uc_affiliate2_condition_affiliate_level_form($form_state, $settings = a
  * @see uc_affiliate2_set_commission_form()
  */
 function uc_affiliate2_set_commission($order, &$affiliate_commission, $settings) {
-  $affiliate_commission->commission = $affiliate_commission->data['total'] * $settings['affiliate_commission_pct'] / 100; 
+  $affiliate_commission->commission = $affiliate_commission->data['total'] * $settings['affiliate_commission_pct'] / 100;
 }
 
 /**
