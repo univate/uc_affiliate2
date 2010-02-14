@@ -34,7 +34,7 @@ function uc_affiliate2_ca_predicate() {
   $predicates = array();
 
   $predicates['uc_affiliate2_apply_commission'] = array(
-    '#title' => t('Commission being applied.'),
+    '#title' => t('Send email to affiliate on new commission.'),
     '#trigger' => 'uc_affiliate2_apply_commission',
     '#class' => 'notification',
     '#status' => 0,
@@ -58,7 +58,7 @@ function uc_affiliate2_ca_predicate() {
     '#actions' => array(
       array(
         '#name' => 'uc_affiliate2_send_email',
-        '#title' => t('Send email regarding affiliate commission.'),
+        '#title' => t('Send affiliate commission email.'),
         '#argument_map' => array(
           'order' => 'order',
           'affiliate_commission' => 'affiliate_commission',
@@ -142,9 +142,9 @@ function uc_affiliate2_ca_action() {
         '#entity' => 'uc_order',
         '#title' => t('Order'),
       ),
-      'recurring_fee' => array(
-        '#entity' => 'uc_recurring_fee',
-        '#title' => t('Recurring Fee'),
+      'affiliate_commission' => array(
+        '#entity' => 'uc_affiliate2_commission',
+        '#title' => t('Affiliate Commission'),
       ),
     ),
   );
