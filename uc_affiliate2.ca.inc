@@ -18,12 +18,10 @@
  * email.
  */
 function uc_affiliate2_ca_entity() {
-  // CA entity for a recurring fee object.
+  // CA entity for a affiliate commission.
   $entities['uc_affiliate2_commission'] = array(
-    '#title' => t('Recurring Fee'),
+    '#title' => t('Affiliate Commission'),
     '#type' => 'object',
-    '#load' => 'uc_affiliate2_fee_user_load',
-    '#save' => 'uc_affiliate2_fee_user_save',
   );
 
   return $entities;
@@ -35,10 +33,10 @@ function uc_affiliate2_ca_entity() {
 function uc_affiliate2_ca_predicate() {
   $predicates = array();
 
-  $predicates['uc_affiliate2_renewal_email_completed'] = array(
-    '#title' => t('Notify customer when a renewal has occured.'),
-    '#trigger' => 'uc_affiliate2_renewal_complete',
-    '#class' => 'notification',
+  $predicates['uc_affiliate2_apply_commission'] = array(
+    '#title' => t('Commission being applied.'),
+    '#trigger' => 'uc_affiliate2_apply_commission',
+    '#class' => 'affiliate',
     '#status' => 0,
     '#weight' => 2,
     '#conditions' => array(
@@ -83,20 +81,20 @@ function uc_affiliate2_ca_predicate() {
 function uc_affiliate2_ca_condition() {
   $conditions['uc_affiliate2_has_affiliate'] = array(
     '#title' => t('User has affiliate'),
-    '#description' => t('Check if the user making the purchase as an affiliate.'),
+    '#description' => t('Check if the user making the purchase has an affiliate.'),
     '#category' => t('Order: Affiliate2'),
     '#callback' => 'uc_affiliate2_condition_has_affiliate',
     '#arguments' => array(
       'order' => array('#entity' => 'uc_order', '#title' => t('Order')),
     ),
   );
-  $conditions['uc_affiliate2_renewal_expired_condition'] = array(
-    '#title' => t('Check if the recurring fee has expired'),
-    '#description' => t('Returns TRUE if the current recurring fee has expired.'),
-    '#category' => t('Order: Recurring'),
-    '#callback' => 'uc_affiliate2_condition_order_has_expired',
+  $conditions['uc_affiliate2_affiliate_level'] = array(
+    '#title' => t('Check affiliate level'),
+    '#description' => t('Returns TRUE if the current affiliate level is within the parameters below.'),
+    '#category' => t('Order: Affiliate2'),
+    '#callback' => 'uc_affiliate2_condition_affiliate_level',
     '#arguments' => array(
-      'order' => array('#entity' => 'uc_affiliate2_fee', '#title' => t('Recurring Fee')),
+      'affiliate_commission' => array('#entity' => 'uc_affiliate2_commission', '#title' => t('Affiliate Commission')),
     ),
   );
 
@@ -108,18 +106,18 @@ function uc_affiliate2_ca_condition() {
  */
 function uc_affiliate2_ca_action() {
   // Send an email to an order with a role expiration
-  $actions['uc_affiliate2_renewal_email'] = array(
-    '#title' => t('Send an order email regarding order renewal.'),
-    '#category' => t('Notification'),
-    '#callback' => 'uc_affiliate2_action_renewal_email',
+  $actions['uc_affiliate2_set_commission'] = array(
+    '#title' => t('Override the commission percentage.'),
+    '#category' => t('Affiliate'),
+    '#callback' => 'uc_affiliate2_set_commission',
     '#arguments' => array(
       'order' => array(
         '#entity' => 'uc_order',
         '#title' => t('Order'),
       ),
-      'recurring_fee' => array(
-        '#entity' => 'uc_affiliate2_fee',
-        '#title' => t('Recurring Fee'),
+      'affiliate_commission' => array(
+        '#entity' => 'uc_affiliate2_commission',
+        '#title' => t('Affiliate Commission'),
       ),
     ),
   );
@@ -135,47 +133,19 @@ function uc_affiliate2_ca_trigger() {
     '#entity' => 'uc_order',
     '#title' => t('Order'),
   );
-  $recurring_fee = array(
-    '#entity' => 'uc_affiliate2_fee',
-    '#title' => t('Recurring Fee'),
+  $affiliate_commission = array(
+    '#entity' => 'uc_affiliate2_commission',
+    '#title' => t('Affiliate commission'),
   );
 
-  $triggers['uc_affiliate2_renewal_complete'] = array(
-    '#title' => t('Recurring order renewal succeeded'),
-    '#category' => t('Recurring Fees'),
+  $triggers['uc_affiliate2_apply_commission'] = array(
+    '#title' => t('Affiliate commission being applied'),
+    '#category' => t('Affiliate2'),
     '#arguments' => array(
       'order' => $order,
-      'recurring_fee' => $recurring_fee,
+      'affiliate_commission' => $affiliate_commission,
     ),
   );
-
-  $triggers['uc_affiliate2_renewal_failed'] = array(
-    '#title' => t('Recurring order renewal failed'),
-    '#category' => t('Recurring Fees'),
-    '#arguments' => array(
-      'order' => $order,
-      'recurring_fee' => $recurring_fee,
-    ),
-  );
-
-  $triggers['uc_affiliate2_cancel'] = array(
-    '#title' => t('Recurring order cancelled'),
-    '#category' => t('Recurring Fees'),
-    '#arguments' => array(
-      'order' => $order,
-      'recurring_fee' => $recurring_fee,
-    ),
-  );
-
-  $triggers['uc_affiliate2_renewal_expired'] = array(
-    '#title' => t('Recurring order renewal expired'),
-    '#category' => t('Recurring Fees'),
-    '#arguments' => array(
-      'order' => $order,
-      'recurring_fee' => $recurring_fee,
-    ),
-  );
-
   return $triggers;
 }
 
@@ -201,4 +171,74 @@ function uc_affiliate2_condition_has_affiliate($order, $settings) {
   return FALSE;
 }
 
+/**
+ * Check the affiliate level.
+ *
+ * @see uc_affiliate2_condition_affiliate_level_form()
+ */
+function uc_affiliate2_condition_affiliate_level($affiliate_commision, $settings) {
+  switch ($settings['affiliate_level_comparison']) {
+    case 'less':
+      return $affiliate_commission->level < $settings['affiliate_level_value'];
+    case 'less_equal':
+      return $affiliate_commission->level <= $settings['affiliate_level_value'];
+    case 'equal':
+      return $affiliate_commission->level == $settings['affiliate_level_value'];
+    case 'greater_equal':
+      return $affiliate_commission->level >= $settings['affiliate_level_value'];
+    case 'greater':
+      return $affiliate_commission->level > $settings['affiliate_level_value'];
+  }
+}
 
+/**
+ * @see uc_affiliate2_condition_affiliate_level()
+ */
+function uc_affiliate2_condition_affiliate_level_form($form_state, $settings = array()) {
+  $form['affiliate_level_value'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Affiliate level value'),
+    '#description' => t('Specify a value to compare the affiliate level against.'),
+    '#default_value' => $settings['affiliate_level_value'],
+    '#size' => 16,
+  );
+
+  $options = array(
+    'less' => t('Total is less than specified value.'),
+    'less_equal' => t('Total is less than or equal to specified value.'),
+    'equal' => t('Total is equal to specified value.'),
+    'greater_equal' => t('Total is greater than or equal to specified value.'),
+    'greater' => t('Total is greater than specified value.'),
+  );
+  $form['affiliate_level_comparison'] = array(
+    '#type' => 'radios',
+    '#title' => t('Affiliate level comparison type'),
+    '#options' => $options,
+    '#default_value' => isset($settings['affiliate_level_comparison']) ? $settings['affiliate_level_comparison'] : 'less_equal',
+  );
+
+  return $form;
+}
+
+/**
+ *
+ * @see uc_affiliate2_set_commission_form()
+ */
+function uc_affiliate2_set_commission($order, &$affiliate_commission, $settings) {
+  $affiliate_commission->commission = $affiliate_commission->data['total'] * $settings['affiliate_commission_pct'] / 100; 
+}
+
+/**
+ *
+ * @see uc_affiliate2_set_commission()
+ */
+function uc_affiliate2_set_commission_form($form_state, $settings = array()) {
+  $form['affiliate_commission_pct'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Affiliate Commission Percent'),
+    '#description' => t('Enter a value to override the default commission percentage.'),
+    '#default_value' => $settings['affiliate_commission_pct']
+  );
+
+  return $form;
+}

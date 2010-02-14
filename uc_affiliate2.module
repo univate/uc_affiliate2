@@ -259,6 +259,8 @@ function _uc_affiliate2_user_access($account, $mode = '') {
  * This function sets $_SESSION['affiliate'] and increments click count
  */
 function uc_affiliate2_init() {
+  module_load_include('inc', 'uc_affiliate2', 'uc_affiliate2.ca');
+
   uc_affiliate2_click();
 }
 
@@ -589,6 +591,9 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
     }
     $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
     $affcom[$aff]['nid'] = $product->nid;
+    $affcom[$aff]['products'][$product->nid]['price'] = $product->price;
+    $affcom[$aff]['products'][$product->nid]['qty'] = $product->qty;
+    $affcom[$aff]['products'][$product->nid]['total'] = $price;
   }
 
   // node ids of each product. If there is only one product, we can use per product commissions
@@ -600,14 +605,25 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
 
     for ($level=1; $level<=count($affs); $level++) {
       $aff = $affs[$level-1];
-      $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $data['nid'], (count($nids) != 1));
-      if ($comm_pct > 0) {
-        $comm = new stdClass();
-        $comm->order_id = $order->order_id;
-        $comm->aid = $aff;
-        //TODO should this be rounded to nearest penny???
-        $comm->commission = $data['total'] * $comm_pct;
-        $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
+
+      // calculate the commission for this affiliate/level
+      $commission = 0;
+      foreach($data['products'] as $pid => $product_data) {
+        $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $pid);
+        $commission += $comm_pct * $product_data['total'];
+      }
+      $comm = new stdClass();
+      $comm->order_id = $order->order_id;
+      $comm->aid = $aff;
+      $comm->commission = $commission; //TODO should this be rounded?
+      $comm->level = $level;
+      $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
+
+      // data field is not saved, but used in CA
+      $comm->data = $data;
+
+      ca_pull_trigger('uc_affiliate2_apply_commission', $order, $comm);
+      if ($comm->commission > 0) {
         uc_affiliate2_save_commission($comm);
       }
     }
@@ -1082,13 +1098,11 @@ function _uc_affiliate2_get_user($uid) {
  *   The affiliate commission being obtained.
  * @param $nid
  *   The node ID of the product being purchased.
- * @param $single_product
- *   TRUE if only one product on the order.
  *
  * @return
  *   Commission percentate as a value between 0 and 1.
  */
-function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0, $single_product = FALSE) {
+function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0) {
   global $user;
 
   if ($level == 1) {
@@ -1105,7 +1119,7 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0,
   $product_commission_structure = unserialize($result->commission_structure);
 
   // if the commission is defined, and this product is alone in the cart
-  if ($product_commission_structure && $single_product) {
+  if ($product_commission_structure) {
     $default_structure = $product_commission_structure;
   }
   else {
