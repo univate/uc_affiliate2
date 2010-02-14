@@ -968,6 +968,87 @@ function uc_affiliate2_click($username = 0) {
   }
 }
 
+/**
+ * Implementation of hook_token_values(). (token.module)
+ */
+function uc_affiliate2_token_values($type, $object = NULL) {
+  $values = array();
+
+  $context = array(
+    'revision' => 'altered',
+    'type' => 'order_product',
+    'subject' => array('order' => $order),
+  );
+
+  switch ($type) {
+    case 'order':
+      $order = $object;
+
+      $values['order-affiliate-commission'] = uc_price(0, $context);
+      $values['order-affiliate-uid'] = '';
+      $values['order-affiliate-name'] = t('No affiliate');
+      $values['order-affiliate-email'] = '';
+
+      $result = db_query('SELECT u.uid, u.name, u.mail, ac.commission
+            FROM {uc_affiliate2_commission} ac
+              INNER JOIN {users} u on ac.aid = u.uid
+              INNER JOIN {uc_affiliate2_users} au on au.aid = ac.aid
+            WHERE ac.order_id = %d AND au.uid = %d', $order->order_id, $order->uid);
+
+      $affiliate = db_fetch_object($result);
+      if (!empty($affiliate)) {
+        $values['order-affiliate-commission'] = uc_price($affiliate->commission, $context);
+        $values['order-affiliate-uid'] = $affiliate->uid;
+        $values['order-affiliate-name'] = $affiliate->name;
+        $values['order-affiliate-email'] = $affiliate->mail;
+      }
+      break;
+    case 'affiliate':
+      $user = user_load($affiliate->aid);
+      $values['affiliate-uid'] = $user->uid;
+      $values['affiliate-name'] = $user->name;
+      $values['affiliate-email'] = $user->mail;
+      $values['affiliate-commission'] = uc_price($affiliate->commission, $context);
+      $values['affiliate-level'] = $affiliate->level;
+      $tokens['affiliate-commissions-url'] = url('user/'.$user->uid.'/affiliate/commissions', array('absolute' => TRUE));
+      break;
+  }
+
+  return $values;
+}
+
+/**
+ * Implementation of hook_token_list(). (token.module)
+ */
+function uc_affiliate2_token_list($type = 'all') {
+  $tokens = array();
+  if ($type == 'order' || $type == 'ubercart' || $type == 'all') {
+    $tokens['order']['order-affiliate-commission'] = t('The affiliate commission amount.');
+    $tokens['order']['order-affiliate-uid'] = t('The referring affiliate user ID.');
+    $tokens['order']['order-affiliate-name'] = t('The referring affiliate name.');
+    $tokens['order']['order-affiliate-email'] = t('The referring affiliate email.');
+  }
+  if ($type == 'affiliate' || $type == 'ubercart' || $type == 'all') {
+    $tokens['affiliate']['affiliate-uid'] = t('Affiliate user ID.');
+    $tokens['affiliate']['affiliate-name'] = t('Affiliate username');
+    $tokens['affiliate']['affiliate-email'] = t('Affiliate email');
+    $tokens['affiliate']['affiliate-commission'] = t('Affiliate commission amount.');
+    $tokens['affiliate']['affiliate-level'] = t('Affiliate level.');
+    $tokens['affiliate']['affiliate-commissions-url'] = t('Link to the affiliate commissions.');
+  }
+  return $tokens;
+}
+
+/**
+ * Implementation of hook_uc_message().
+ */
+function uc_affiliate2_uc_message() {
+  $messages['uc_affiliate2_commission_subject'] = t('[store-name]: Affiliate Commission received');
+  $messages['uc_affiliate2_commission_message'] = t("Hi [affiliate-name], \n\nCongratulations, an affiliate commission has be credited to your account.\n\nYou can see full details from your affiliate center: [affiliate-commissions-url].\n\nThanks again, \n\n[store-name]\n[site-slogan]");
+
+  return $messages;
+}
+
 // Form to associate attributes with products or classes.
 function uc_affiliate2_product_commission($node) {
   $output = "'Product Commission Structure' is only used when the product is alone in the cart. <br />

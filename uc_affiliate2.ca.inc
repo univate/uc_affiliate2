@@ -36,36 +36,38 @@ function uc_affiliate2_ca_predicate() {
   $predicates['uc_affiliate2_apply_commission'] = array(
     '#title' => t('Commission being applied.'),
     '#trigger' => 'uc_affiliate2_apply_commission',
-    '#class' => 'affiliate',
+    '#class' => 'notification',
     '#status' => 0,
     '#weight' => 2,
     '#conditions' => array(
       '#operator' => 'AND',
       '#conditions' => array(
         array(
-          '#name' => 'uc_affiliate2_renewal_status_condition',
-          '#title' => t('If the order contains product renewal.'),
+          '#name' => 'uc_affiliate2_commission_amount',
+          '#title' => t('If the commission amount is greater then zero.'),
           '#argument_map' => array(
-            'order' => 'order',
+            'affiliate_commission' => 'affiliate_commission',
           ),
           '#settings' => array(
+            'affiliate_commission_value' => 0,
+            'affiliate_commission_comparision' => 'greater',
           ),
         ),
       ),
     ),
     '#actions' => array(
       array(
-        '#name' => 'uc_affiliate2_renewal_email',
-        '#title' => t('Send an order email regarding order renewal.'),
+        '#name' => 'uc_affiliate2_send_email',
+        '#title' => t('Send email regarding affiliate commission.'),
         '#argument_map' => array(
           'order' => 'order',
-          'recurring_fee' => 'recurring_fee',
+          'affiliate_commission' => 'affiliate_commission',
         ),
         '#settings' => array(
           'from' => uc_store_email_from(),
-          'addresses' => '[order-email]',
-          'subject' => uc_get_message('uc_affiliate2_renewal_completed_subject'),
-          'message' => uc_get_message('uc_affiliate2_renewal_completed_message'),
+          'addresses' => '[affiliate-email]',
+          'subject' => uc_get_message('uc_affiliate2_commission_subject'),
+          'message' => uc_get_message('uc_affiliate2_commission_message'),
           'format' => 1,
         ),
       )
@@ -88,6 +90,16 @@ function uc_affiliate2_ca_condition() {
       'order' => array('#entity' => 'uc_order', '#title' => t('Order')),
     ),
   );
+  $conditions['uc_affiliate2_commission_amount'] = array(
+    '#title' => t('Check commission amount'),
+    '#description' => t('Check if the commission amount is within the parameters below.'),
+    '#category' => t('Order: Affiliate2'),
+    '#callback' => 'uc_affiliate2_condition_commission_amount',
+    '#arguments' => array(
+      'affiliate_commission' => array('#entity' => 'uc_affiliate2_commission', '#title' => t('Affiliate Commission')),
+    ),
+  );
+
   $conditions['uc_affiliate2_affiliate_level'] = array(
     '#title' => t('Check affiliate level'),
     '#description' => t('Returns TRUE if the current affiliate level is within the parameters below.'),
@@ -121,6 +133,22 @@ function uc_affiliate2_ca_action() {
       ),
     ),
   );
+  $actions['uc_affiliate2_send_email'] = array(
+    '#title' => t('Send an email regarding affiliate.'),
+    '#category' => t('Notification'),
+    '#callback' => 'uc_affiliate2_action_commission_email',
+    '#arguments' => array(
+      'order' => array(
+        '#entity' => 'uc_order',
+        '#title' => t('Order'),
+      ),
+      'recurring_fee' => array(
+        '#entity' => 'uc_recurring_fee',
+        '#title' => t('Recurring Fee'),
+      ),
+    ),
+  );
+
 
   return $actions;
 }
@@ -221,6 +249,54 @@ function uc_affiliate2_condition_affiliate_level_form($form_state, $settings = a
 }
 
 /**
+ * Check the affiliate commission amount.
+ *
+ * @see uc_affiliate2_condition_commission_amount_form()
+ */
+function uc_affiliate2_condition_commission_amount($affiliate_commision, $settings) {
+  switch ($settings['affiliate_commission_comparison']) {
+    case 'less':
+      return $affiliate_commission->commission < $settings['affiliate_commission_value'];
+    case 'less_equal':
+      return $affiliate_commission->commission <= $settings['affiliate_commission_value'];
+    case 'equal':
+      return $affiliate_commission->commission == $settings['affiliate_commission_value'];
+    case 'greater_equal':
+      return $affiliate_commission->commission >= $settings['affiliate_commission_value'];
+    case 'greater':
+      return $affiliate_commission->commission > $settings['affiliate_commission_value'];
+  }
+}
+
+/**
+ * @see uc_affiliate2_condition_commission_amount_form()
+ */
+function uc_affiliate2_condition_commission_amount_form($form_state, $settings = array()) {
+  $form['affiliate_commission_value'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Affiliate commission value'),
+    '#description' => t('Specify a value to compare the affiliate commission amount against.'),
+    '#default_value' => $settings['affiliate_commission_value'],
+    '#size' => 16,
+  );
+
+  $options = array(
+    'less' => t('Total is less than specified value.'),
+    'less_equal' => t('Total is less than or equal to specified value.'),
+    'equal' => t('Total is equal to specified value.'),
+    'greater_equal' => t('Total is greater than or equal to specified value.'),
+    'greater' => t('Total is greater than specified value.'),
+  );
+  $form['affiliate_commission_comparison'] = array(
+    '#type' => 'radios',
+    '#title' => t('Affiliate commission comparison type'),
+    '#options' => $options,
+    '#default_value' => isset($settings['affiliate_commission_comparison']) ? $settings['affiliate_commission_comparison'] : 'greater',
+  );
+
+  return $form;
+}
+/**
  *
  * @see uc_affiliate2_set_commission_form()
  */
@@ -241,4 +317,51 @@ function uc_affiliate2_set_commission_form($form_state, $settings = array()) {
   );
 
   return $form;
+}
+
+/**
+ * Send an email with order and affiliate commission replacement tokens.
+ *
+ * The recipients, subject, and message fields take order token replacements.
+ *
+ * @see uc_affiliate2_action_commission_email_form()
+ */
+function uc_affiliate2_action_commission_email($order, $affiliate_commission, $settings) {
+  $account = uc_order_user_load($order);
+
+  // Token replacements for the subject and body
+  $settings['replacements'] = array(
+    'global' => NULL,
+    'order' => $order,
+    'user' => $account,
+    'affiliate' => $affiliate_commission,
+  );
+
+  // Replace tokens and parse recipients.
+  $recipients = array();
+  $addresses = token_replace_multiple($settings['addresses'], $settings['replacements']);
+  foreach (explode("\n", $addresses) as $address) {
+    $recipients[] = trim($address);
+  }
+
+  // Send to each recipient.
+  foreach ($recipients as $email) {
+    $sent = drupal_mail('uc_affiliate2', 'action-mail', $email, uc_store_mail_recipient_language($email), $settings, $settings['from']);
+
+    if (!$sent['result']) {
+      watchdog('ca', 'Attempt to e-mail @email concerning order @order_id failed.', array('@email' => $email, '@order_id' => $order->order_id), WATCHDOG_ERROR);
+    }
+  }
+}
+
+/**
+ * Email settings form.
+ *
+ * @see uc_affiliate2_action_commission_email()
+ */
+function uc_affiliate2_action_commission_email_form($form_state, $settings = array()) {
+  // ca_build_email_form() function seems to be incorrectly part of uc_roles so
+  // we add this hack to include the uc_roles.ca.inc here.
+  module_load_include('inc', 'uc_roles', 'uc_roles.ca');
+  return ca_build_email_form($form_state, $settings, array('global', 'order', 'user', 'affiliate'));
 }
