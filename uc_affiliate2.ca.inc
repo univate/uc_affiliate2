@@ -1,5 +1,5 @@
 <?php
-// $Id$
+// $Id: uc_affiliate2.ca.inc,v 1.1.2.1 2010/02/15 02:55:14 univate Exp $
 
 /**
  * @file
