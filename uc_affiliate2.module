@@ -210,8 +210,8 @@ function uc_affiliate2_menu() {
   //add item to node-form to adjust commissions by product
   $items['node/%node/edit/commissions'] = array(
     'title' => 'Affiliate Commissions',
-    'page callback' => 'uc_affiliate2_product_commission',
-    'page arguments' => array(1),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_affiliate2_product_commission_form', 1),
     'type' => MENU_LOCAL_TASK,
     'access callback' => '_uc_affiliate2_node_access',
     'access arguments' => array(1),
@@ -1050,44 +1050,61 @@ function uc_affiliate2_uc_message() {
 }
 
 // Form to associate attributes with products or classes.
-function uc_affiliate2_product_commission($node) {
-  $output = "'Product Commission Structure' is only used when the product is alone in the cart. <br />
-            If set to 0, the product won't be present in the generated links, and no commissions will be given for it (excluded from the total). <br />";
+function uc_affiliate2_product_commission_form($form_state, $node) {
+
+  $form = array(
+    '#theme' => 'uc_affiliate2_product_commission_form',
+    '#cache' => TRUE,
+  );
 
   // Get commission structure for this product
   $commission_structure = 0;
-  $result = db_query("SELECT commission_structure FROM {uc_affiliate2_product_commission} WHERE nid = %d", $node->nid);
+  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
 
-  if ($product_commission = db_fetch_object($result)) {
-    $commission_structure = $product_commission->commission_structure;
+  $form['product_commissions']['#theme'] = 'uc_affiliate2_product_commission_form_current';
+  $form['product_commissions']['#tree'] = TRUE;
+  $count = 0;
+  while ($product_commission = db_fetch_object($result)) {
+    $delta = $product_commission->weight;
+    $form['product_commissions'][$count]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $delta );
+    $form['product_commissions'][$count]['rule'] = array('#value' => $product_commission->rule);
+    if (isset($product->match)) { 
+      $form['product_commissions'][$count]['match'] = array('#value' => $product_commission->match);
+    }
+    $form['product_commissions'][$count]['commission_structure'] = array('#value' => unserialize($product_commission->commission_structure));
+    $count++;
   }
 
-  $output .= drupal_get_form('uc_affiliate2_product_commission_form', $commission_structure, $node->nid);
-
-  return $output;
-}
-
-function uc_affiliate2_product_commission_form($form_state, $commission_structure, $nid) {
+  $form['product_commissions']['new']['rule'] = array(
+    '#type' => 'select',
+    '#options' => array(
+      'all' => 'All affiliates',
+      'role' => 'User role',
+      'user' => 'User'),
+  );
+  $form['product_commissions']['new']['match'] = array(
+    '#value' => '<div id="product-commission-match"></div>'
+  );
+  $form['product_commissions']['new']['commission_structure'] = array(
+    '#type' => 'textfield',
+  );
   $form['commission_structure'] = array(
     '#type' => 'textfield',
     '#title' => t('Product Commission Structure'),
-    '#description' => t('Sets the commission structure for this product.
-                        This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding
-                        to the next level in the hierarchy.  Example: 5,4,2,2,1'),
+    '#description' => t("Sets an alternative commission structure for this product.<br/>If set to 0, the product won't be present in the generated links, and no commissions will be given for it.<br/>Otherwise this should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1"),
     '#default_value' => unserialize($commission_structure),
     '#size' => 10
   );
 
   $form['nid'] = array(
     '#type' => 'value',
-    '#value' => $nid,
+    '#value' => $node->nid,
   );
 
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save'),
   );
-
   return $form;
 }
 
@@ -1231,6 +1248,27 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0)
   return 0;
 }
 
+
+/**
+ * Implementation of hook_theme()
+ */
+function uc_affiliate2_theme() {
+  return array(
+    'uc_affiliate2_columns_checkboxes' => array(
+      'arguments' => array('e' => NULL),
+    ),
+    'uc_affiliate2_product_commission_form_current' => array(
+      'arguments' => array('form' => NULL),
+    ),
+    'uc_affiliate2_product_commission_form' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+/**
+ *
+ */
 function theme_uc_affiliate2_columns_checkboxes($e) {
   $options = $e['#options'];
   // Set the default if no columns are given.
@@ -1254,4 +1292,36 @@ function theme_uc_affiliate2_columns_checkboxes($e) {
     array_push($rows, $row);
   }
   return theme_table(NULL, $rows);
+}
+
+/**
+ *
+ */
+function theme_uc_affiliate2_product_commission_form_current($form) {
+  $header = array('', '', t('Commission Structure'), t('Weight'));
+  drupal_add_tabledrag('product-commissions', 'order', 'sibling', 'commission-weight');
+
+  foreach (element_children($form) as $key) {
+    // Add class to group weight fields for drag and drop.
+    $form[$key]['weight']['#attributes']['class'] = 'commission-weight';
+
+    $row = array();
+    $row[] = drupal_render($form[$key]['rule']);
+    $row[] = drupal_render($form[$key]['match']);
+    $row[] = drupal_render($form[$key]['commission_structure']);
+    $row[] = drupal_render($form[$key]['weight']);
+    $rows[] = array('data' => $row, 'class' => 'draggable tabledrag-leaf');
+  }
+  $output = theme('table', $header, $rows, array('id' => 'product-commissions'));
+  $output .= drupal_render($form);
+  return $output;
+}
+
+/**
+ * Add table drag effect to product commission table.
+ */
+function theme_uc_affiliate2_product_commission_form($form) {
+  drupal_add_tabledrag('product-commissions', 'order', 'sibling', 'commission-weight');
+  $output = drupal_render($form);
+  return $output;
 }

@@ -161,8 +161,24 @@ function uc_affiliate2_schema() {
         'size' => 'big',
         'not null' => TRUE,
       ),
+      'rule' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => 'All',
+      ),
+      'match' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+      'weight' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+      ),
     ),
-    'primary key' => array('nid'),
   );
 
   return $schema;
@@ -214,5 +230,16 @@ function uc_affiliate2_update_6000() {
   $ret = array();
   db_add_field($ret, 'uc_affiliate2_commission', 'level', array('description' => t('Commission Level'), 'type' => 'int', 'not null' => FALSE, 'default' => 0));
   return $ret;
+}
+
+/**
+ * Add rule, match & weight fields to uc_affiliate2_product_commission.
+ */
+function uc_affiliate2_update_6001() {
+  $ret = array();
+  db_add_field($ret, 'uc_affiliate2_product_commission', 'rule', array('type' => 'varchar', 'length' => 32, 'not null' => TRUE, 'default' => 'All'));
+  db_add_field($ret, 'uc_affiliate2_product_commission', 'match', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE));
+  db_add_field($ret, 'uc_affiliate2_product_commission', 'weight', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 0));
+  db_drop_primary_key($ret, 'uc_affiliate2_product_commission'); 
   return $ret;
 }
