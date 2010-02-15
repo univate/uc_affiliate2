@@ -8,6 +8,9 @@
  *
  */
 
+define('UC_AFFILIATE2_REPORT_DATE_FORMAT', 'M-Y');
+define('UC_AFFILIATE2_REPORT_DATE_INTERVAL', '1 month');
+
 /**
  * Define the affiliate users listing
  */
@@ -110,7 +113,7 @@ function uc_affiliate2_admin_users($uid) {
   $amounts = _uc_affiliate2_get_amounts('aid', $uid, 'date');
 
   while ($rec = db_fetch_array($result)) {
-    $mondate = date('M Y', $rec['created']);
+    $mondate = date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $rec['created']);
     $total_sales[$mondate] = isset($total_sales[$mondate]) ? $total_sales[$mondate]+$rec['order_total'] : $rec['order_total'];
     $total_commissions[$mondate] = isset($total_commissions[$mondate]) ? $total_commissions[$mondate]+$rec['commission'] : $rec['commission'];
   }
@@ -131,7 +134,7 @@ function uc_affiliate2_admin_users($uid) {
 
     // generate record
     $rows[] = array(
-      $date,
+      str_replace('-', ' ', $date),
       uc_currency_format($sales),
       uc_currency_format($total_commissions[$date]),
       $paid
@@ -165,7 +168,7 @@ function uc_affiliate2_admin_users_paid_form($form_state, $amount, $uid, $date) 
     '#value' => $date
   );
 
-  $form['#redirect'] = 'admin/store/affiliate/reports/'. date('M Y', $date);
+  $form['#redirect'] = 'admin/store/affiliate/reports/'. date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $date);
 
   return $form;
 }
@@ -355,10 +358,10 @@ function uc_affiliate2_monthly_report() {
 
   $date_start = strtotime($month);
   if ($date_start === FALSE || $date_start == -1) { // PHP > 5.1.0 returns FALSE instead of -1
-    $month = date('M Y');
+    $month = date(UC_AFFILIATE2_REPORT_DATE_FORMAT);
     $date_start = strtotime($month);
   }
-  $date_end = strtotime('+1 month', $date_start);
+  $date_end = strtotime('+'. UC_AFFILIATE2_REPORT_DATE_INTERVAL, $date_start);
 
 
    // Used to determine whether to show the paid form
@@ -413,9 +416,9 @@ function uc_affiliate2_monthly_report() {
     );
   }
 
-  $output = "<p>". t("Displaying affiliate sales and commissions for ") . $month .". ";
-  $output .= t("Show ") . l(t('previous month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date('M Y', strtotime('-1 month', $date_start)))));
-  $output .= t(" or ") . l(t('next month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date('M Y', $date_end)))) .'.</p>';
+  $output = "<p>". t("Displaying affiliate sales and commissions for ") . str_replace('-', ' ', $month) .". ";
+  $output .= t("Show ") . l(t('previous month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date(UC_AFFILIATE2_REPORT_DATE_FORMAT, strtotime('-'. UC_AFFILIATE2_REPORT_DATE_INTERVAL, $date_start)))));
+  $output .= t(" or ") . l(t('next month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $date_end)))) .'.</p>';
 
   $output .= theme('table', $header, $rows);
 
