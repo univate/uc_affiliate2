@@ -259,6 +259,8 @@ function _uc_affiliate2_user_access($account, $mode = '') {
  * This function sets $_SESSION['affiliate'] and increments click count
  */
 function uc_affiliate2_init() {
+  module_load_include('inc', 'uc_affiliate2', 'uc_affiliate2.ca');
+
   uc_affiliate2_click();
 }
 
@@ -589,6 +591,9 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
     }
     $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
     $affcom[$aff]['nid'] = $product->nid;
+    $affcom[$aff]['products'][$product->nid]['price'] = $product->price;
+    $affcom[$aff]['products'][$product->nid]['qty'] = $product->qty;
+    $affcom[$aff]['products'][$product->nid]['total'] = $price;
   }
 
   // node ids of each product. If there is only one product, we can use per product commissions
@@ -600,14 +605,25 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
 
     for ($level=1; $level<=count($affs); $level++) {
       $aff = $affs[$level-1];
-      $comm_pct = _uc_affiliate2_get_commission_percentage($level, $data['nid'], $nids);
-      if ($comm_pct > 0) {
-        $comm = new stdClass();
-        $comm->order_id = $order->order_id;
-        $comm->aid = $aff;
-        //TODO should this be rounded to nearest penny???
-        $comm->commission = $data['total'] * $comm_pct;
-        $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
+
+      // calculate the commission for this affiliate/level
+      $commission = 0;
+      foreach($data['products'] as $pid => $product_data) {
+        $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $pid);
+        $commission += $comm_pct * $product_data['total'];
+      }
+      $comm = new stdClass();
+      $comm->order_id = $order->order_id;
+      $comm->aid = $aff;
+      $comm->commission = $commission; //TODO should this be rounded?
+      $comm->level = $level;
+      $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
+
+      // data field is not saved, but used in CA
+      $comm->data = $data;
+
+      ca_pull_trigger('uc_affiliate2_apply_commission', $order, $comm);
+      if ($comm->commission > 0) {
         uc_affiliate2_save_commission($comm);
       }
     }
@@ -952,6 +968,87 @@ function uc_affiliate2_click($username = 0) {
   }
 }
 
+/**
+ * Implementation of hook_token_values(). (token.module)
+ */
+function uc_affiliate2_token_values($type, $object = NULL) {
+  $values = array();
+
+  $context = array(
+    'revision' => 'altered',
+    'type' => 'order_product',
+    'subject' => array('order' => $order),
+  );
+
+  switch ($type) {
+    case 'order':
+      $order = $object;
+
+      $values['order-affiliate-commission'] = uc_price(0, $context);
+      $values['order-affiliate-uid'] = '';
+      $values['order-affiliate-name'] = t('No affiliate');
+      $values['order-affiliate-email'] = '';
+
+      $result = db_query('SELECT u.uid, u.name, u.mail, ac.commission
+            FROM {uc_affiliate2_commission} ac
+              INNER JOIN {users} u on ac.aid = u.uid
+              INNER JOIN {uc_affiliate2_users} au on au.aid = ac.aid
+            WHERE ac.order_id = %d AND au.uid = %d', $order->order_id, $order->uid);
+
+      $affiliate = db_fetch_object($result);
+      if (!empty($affiliate)) {
+        $values['order-affiliate-commission'] = uc_price($affiliate->commission, $context);
+        $values['order-affiliate-uid'] = $affiliate->uid;
+        $values['order-affiliate-name'] = $affiliate->name;
+        $values['order-affiliate-email'] = $affiliate->mail;
+      }
+      break;
+    case 'affiliate':
+      $user = user_load($affiliate->aid);
+      $values['affiliate-uid'] = $user->uid;
+      $values['affiliate-name'] = $user->name;
+      $values['affiliate-email'] = $user->mail;
+      $values['affiliate-commission'] = uc_price($affiliate->commission, $context);
+      $values['affiliate-level'] = $affiliate->level;
+      $tokens['affiliate-commissions-url'] = url('user/'.$user->uid.'/affiliate/commissions', array('absolute' => TRUE));
+      break;
+  }
+
+  return $values;
+}
+
+/**
+ * Implementation of hook_token_list(). (token.module)
+ */
+function uc_affiliate2_token_list($type = 'all') {
+  $tokens = array();
+  if ($type == 'order' || $type == 'ubercart' || $type == 'all') {
+    $tokens['order']['order-affiliate-commission'] = t('The affiliate commission amount.');
+    $tokens['order']['order-affiliate-uid'] = t('The referring affiliate user ID.');
+    $tokens['order']['order-affiliate-name'] = t('The referring affiliate name.');
+    $tokens['order']['order-affiliate-email'] = t('The referring affiliate email.');
+  }
+  if ($type == 'affiliate' || $type == 'ubercart' || $type == 'all') {
+    $tokens['affiliate']['affiliate-uid'] = t('Affiliate user ID.');
+    $tokens['affiliate']['affiliate-name'] = t('Affiliate username');
+    $tokens['affiliate']['affiliate-email'] = t('Affiliate email');
+    $tokens['affiliate']['affiliate-commission'] = t('Affiliate commission amount.');
+    $tokens['affiliate']['affiliate-level'] = t('Affiliate level.');
+    $tokens['affiliate']['affiliate-commissions-url'] = t('Link to the affiliate commissions.');
+  }
+  return $tokens;
+}
+
+/**
+ * Implementation of hook_uc_message().
+ */
+function uc_affiliate2_uc_message() {
+  $messages['uc_affiliate2_commission_subject'] = t('[store-name]: Affiliate Commission received');
+  $messages['uc_affiliate2_commission_message'] = t("Hi [affiliate-name], \n\nCongratulations, an affiliate commission has be credited to your account.\n\nYou can see full details from your affiliate center: [affiliate-commissions-url].\n\nThanks again, \n\n[store-name]\n[site-slogan]");
+
+  return $messages;
+}
+
 // Form to associate attributes with products or classes.
 function uc_affiliate2_product_commission($node) {
   $output = "'Product Commission Structure' is only used when the product is alone in the cart. <br />
@@ -1075,8 +1172,18 @@ function _uc_affiliate2_get_user($uid) {
 
 /**
  * Get an affiliates commission percentage for the given level
+ *
+ * @param $aff_id
+     ID of the affiliate.
+ * @param $level
+ *   The affiliate commission being obtained.
+ * @param $nid
+ *   The node ID of the product being purchased.
+ *
+ * @return
+ *   Commission percentate as a value between 0 and 1.
  */
-function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
+function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0) {
   global $user;
 
   $account = user_load(array('uid' => $_SESSION['affiliate']));
@@ -1092,7 +1199,7 @@ function _uc_affiliate2_get_commission_percentage($level = 1, $nid = 0, $nids) {
   $product_commission_structure = unserialize($result->commission_structure);
 
   // if the commission is defined, and this product is alone in the cart
-  if ($product_commission_structure && (count($nids) === 1)) {
+  if ($product_commission_structure) {
     $default_structure = $product_commission_structure;
   }
   else {

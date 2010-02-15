@@ -111,6 +111,12 @@ function uc_affiliate2_schema() {
         'size' => 'big',
         'not null' => FALSE,
       ),
+      'level' => array(
+        'description' => t('Commission Level'),
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => 0,
+      ),
       'commission_notes' => array(
         'type' => 'varchar',
         'length' => 255,
@@ -199,4 +205,14 @@ function uc_affiliate2_update_3() {
   $items[] = update_sql("ALTER TABLE {uc_affiliate2_clicks} ADD COLUMN destination varchar(255);");
 
   return $items;
+}
+
+/**
+ * Add level field to commission table.
+ */
+function uc_affiliate2_update_6000() {
+  $ret = array();
+  db_add_field($ret, 'uc_affiliate2_commission', 'level', array('description' => t('Commission Level'), 'type' => 'int', 'not null' => FALSE, 'default' => 0));
+  return $ret;
+  return $ret;
 }
