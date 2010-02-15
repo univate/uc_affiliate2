@@ -8,7 +8,7 @@ This release is brought to you by univate, who has done a ton of good work on th
 -- add optional feature to allow subsequent orders for a member to credit the commissions back to the previous affiliate.
 -- separate the code for applying the commissions from the hook_order() function
 -- split functionality from *.module to a *.user.inc and *.admin.inc files
--- add CA support [trigger: commission_applied], [coditions: has_affiliate, check_commission, check_level], [actions: override_commission, commission_email]
+-- add CA support [trigger: commission_applied], [conditions: has_affiliate, check_commission, check_level], [actions: override_commission, send_affiliate_email]
 -- add token support for the affiliate email
 -- add 'level' field to the commission table
 

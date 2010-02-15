@@ -134,7 +134,7 @@ function uc_affiliate2_ca_action() {
     ),
   );
   $actions['uc_affiliate2_send_email'] = array(
-    '#title' => t('Send an email regarding affiliate.'),
+    '#title' => t('Send an affiliate email.'),
     '#category' => t('Notification'),
     '#callback' => 'uc_affiliate2_action_commission_email',
     '#arguments' => array(
