@@ -99,7 +99,10 @@ function uc_affiliate2_admin_users($uid) {
   );
 
   // define the query
-  $sql = 'SELECT ac.commission, uo.order_total, uo.created FROM {uc_affiliate2_commission} AS ac LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id WHERE ac.aid = %d';
+  $sql = 'SELECT ac.commission, uo.order_total, uo.created
+          FROM {uc_affiliate2_commission} AS ac
+            LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id
+          WHERE ac.aid = %d';
   $result = db_query($sql, $uid);
 
   $total_sales = array();
@@ -113,7 +116,8 @@ function uc_affiliate2_admin_users($uid) {
   }
 
   foreach ($total_sales as $date => $sales) {
-    $amount = ($amounts[$date]) ? $amounts[$date] : 0;
+    $timestamp = strtotime($date);
+    $amount = ($amounts[$timestamp]) ? $amounts[$timestamp] : 0;
 
     // format paid field as link or form
     if ($month_timestamp && $date == $month_timestamp) {
@@ -349,9 +353,13 @@ function uc_affiliate2_monthly_report() {
    // The month we are viewing. If this is empty, the current month is assumed.
   $month = arg(4);
 
-  if (empty($month)) {
+  $date_start = strtotime($month);
+  if ($date_start === FALSE || $date_start == -1) { // PHP > 5.1.0 returns FALSE instead of -1
     $month = date('M Y');
+    $date_start = strtotime($month);
   }
+  $date_end = strtotime('+1 month', $date_start);
+
 
    // Used to determine whether to show the paid form
   $uid_external = arg(5);
@@ -365,9 +373,6 @@ function uc_affiliate2_monthly_report() {
   );
 
   // define the query
-  $date_start = strtotime($month);
-  $date_end = strtotime('+1 month', $date_start);
-
   $sql = 'SELECT ac.aid, ac.commission, uo.order_total FROM {uc_affiliate2_commission} AS ac LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id WHERE uo.created BETWEEN %d AND %d';
   $result = db_query($sql, $date_start, $date_end);
 
