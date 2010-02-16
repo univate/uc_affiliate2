@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.admin.inc,v 1.1.2.1 2010/02/01 06:27:13 univate Exp $
+// $Id: uc_affiliate2.admin.inc,v 1.1.2.2 2010/02/16 00:42:39 univate Exp $
 
 
 /**
@@ -7,6 +7,13 @@
  * Admin functions for uc_affiliate2 module.
  *
  */
+
+/**
+ * The ensure the date and interval used in the reports remain consistant
+ * across all pages we define them here.
+ */
+define('UC_AFFILIATE2_REPORT_DATE_FORMAT', 'M-Y');
+define('UC_AFFILIATE2_REPORT_DATE_INTERVAL', '1 month');
 
 /**
  * Define the affiliate users listing
@@ -52,10 +59,13 @@ function uc_affiliate2_admin_manage() {
 
   // define the query
   $sql = "SELECT u.uid, u.name, u.status, u.created, u.access
-            FROM {users} u
-              INNER JOIN {users_roles} ur ON u.uid = ur.uid
-                  WHERE ur.rid IN (SELECT r.rid from {role} r INNER JOIN {permission} p ON r.rid = p.rid WHERE p.perm LIKE '%act as affiliate%')
-                    GROUP BY u.uid, u.name, u.status, u.created, u.access";
+          FROM {users} u
+            INNER JOIN {users_roles} ur ON u.uid = ur.uid
+          WHERE ur.rid IN (SELECT r.rid
+                           FROM {role} r
+                             INNER JOIN {permission} p ON r.rid = p.rid
+                           WHERE p.perm LIKE '%act as affiliate%')
+          GROUP BY u.uid, u.name, u.status, u.created, u.access";
 
   $sql .= tablesort_sql($header);
   $result = db_query($sql);
@@ -96,7 +106,10 @@ function uc_affiliate2_admin_users($uid) {
   );
 
   // define the query
-  $sql = 'SELECT ac.commission, uo.order_total, uo.created FROM {uc_affiliate2_commission} AS ac LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id WHERE ac.aid = %d';
+  $sql = 'SELECT ac.commission, uo.order_total, uo.created
+          FROM {uc_affiliate2_commission} AS ac
+            LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id
+          WHERE ac.aid = %d';
   $result = db_query($sql, $uid);
 
   $total_sales = array();
@@ -104,19 +117,19 @@ function uc_affiliate2_admin_users($uid) {
   $amounts = _uc_affiliate2_get_amounts('aid', $uid, 'date');
 
   while ($rec = db_fetch_array($result)) {
-    $date_array = getdate($rec['created']);
-    $mondate = mktime(0, 0, 0, $date_array['mon'], 1, $date_array['year']);
+    $mondate = date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $rec['created']);
     $total_sales[$mondate] = isset($total_sales[$mondate]) ? $total_sales[$mondate]+$rec['order_total'] : $rec['order_total'];
     $total_commissions[$mondate] = isset($total_commissions[$mondate]) ? $total_commissions[$mondate]+$rec['commission'] : $rec['commission'];
   }
 
   foreach ($total_sales as $date => $sales) {
-    $amount = ($amounts[$date]) ? $amounts[$date] : 0;
+    $timestamp = strtotime($date);
+    $amount = ($amounts[$timestamp]) ? $amounts[$timestamp] : 0;
 
     // format paid field as link or form
-    if ($month_timestamp && is_numeric($month_timestamp) && $date == $month_timestamp) {
+    if ($month_timestamp && $date == $month_timestamp) {
       $amount = uc_currency_format($amount, false);
-      $paid = drupal_get_form('uc_affiliate2_admin_users_paid_form', $amount, $uid, $date);
+      $paid = drupal_get_form('uc_affiliate2_admin_users_paid_form', $amount, $uid, strtotime($date));
     }
     else {
       $amount = uc_currency_format($amount);
@@ -125,7 +138,7 @@ function uc_affiliate2_admin_users($uid) {
 
     // generate record
     $rows[] = array(
-      format_date($date, 'custom', 'M Y'),
+      str_replace('-', ' ', $date),
       uc_currency_format($sales),
       uc_currency_format($total_commissions[$date]),
       $paid
@@ -159,7 +172,7 @@ function uc_affiliate2_admin_users_paid_form($form_state, $amount, $uid, $date) 
     '#value' => $date
   );
 
-  $form['#redirect'] = 'admin/store/affiliate/reports/'. $date_start;
+  $form['#redirect'] = 'admin/store/affiliate/reports/'. date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $date);
 
   return $form;
 }
@@ -193,9 +206,9 @@ function uc_affiliate2_admin_users_paid_form_submit($form, &$form_state) {
 }
 
 /**
- * Define the admin settings form
+ * Define the banner/link settings form
  */
-function uc_affiliate2_admin_settings() {
+function uc_affiliate2_banner_settings() {
   $form['affiliate_banner_template'] = array(
     '#type' => 'textarea',
     '#title' => t('Affiliate Banner Templates'),
@@ -215,6 +228,14 @@ function uc_affiliate2_admin_settings() {
                         Allowed placeholders: [LINK], [TITLE], [IMG], [DESCRIPTION], [PRICE].'),
     '#default_value' => variable_get('affiliate_product_html_template', '<div id="prodcontain"><a href="[LINK]"><img src="[IMG]"></a><br /><div id="description">description:</div>[DESCRIPTION]<br /><div id="price">[PRICE]</div></div>'),
   );
+
+  return system_settings_form($form);
+}
+
+/**
+ * Define the commission settings form
+ */
+function uc_affiliate2_commission_settings() {
   $form['affiliate_hierarchy_depth'] = array(
     '#type' => 'textfield',
     '#title' => t('Affiliate hierarchy depth'),
@@ -228,47 +249,6 @@ function uc_affiliate2_admin_settings() {
     '#description' => t('Sets the default commission structure.  This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1'),
     '#default_value' => variable_get('affiliate_commission_structure', '5,3,2,2,1'),
     '#size' => 10
-  );
-
-  foreach (uc_order_status_list('general') as $status) {
-    $statuses[$status['id']] = $status['title'];
-  }
-  $form['affiliate_commission_order_statuses'] = array(
-    '#type' => 'checkboxes',
-    '#title' => t('Order status'),
-    '#default_value' => variable_get('affiliate_commission_order_statuses', array('completed' => 'completed')),
-    '#description' => t('Where in the order status(es) will the commissions be assigned.'),
-    '#options' => $statuses,
-  );
-  $form['affiliate_invalid_redirect'] = array(
-    '#type' => 'textfield',
-    '#title' => t('On an invalid affiliate URL, redirect to'),
-    '#description' => t('When an invalid username is used as a subdomain, the user will be redirected to this URL.'),
-    '#default_value' => variable_get('affiliate_invalid_redirect', '')
-  );
-  $form['affiliate_enable_subdomain_handling'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Enable affiliate subdomain handling'),
-    '#description' => t("If enabled, this module will record affiliate actions if customers visit the site through an affiliate subdomain, like john.thissite.com. Enable this only if drupal is not installed on a subdomain."),
-    '#default_value' => variable_get('affiliate_enable_subdomain_handling', 0),
-  );
-  $form['affiliate_enable_recurring_commission'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Enable affiliate commissions for subsequent orders'),
-    '#description' => t("If enabled, on subsequent orders after a user has made a purchase will grant commissions to the original affiliate if no affiliate information is available from the session or cookie."),
-    '#default_value' => variable_get('affiliate_enable_recurring_commission', 0),
-  );
-
-  foreach (_payment_method_list() as $method) {
-    $payment_methods[$method['id']] = $method['name'];
-  }
-
-  $form['affiliate_no_commission_payment_methods'] = array(
-    '#type' => 'checkboxes',
-    '#title' => t('Disable commission for these Payment methods'),
-    '#default_value' => variable_get('affiliate_no_commission_payment_methods', array()),
-    '#description' => t('You can disable commission for certain Payment methods'),
-    '#options' => $payment_methods,
   );
 
   $roles = user_roles(FALSE, 'act as affiliate');
@@ -310,6 +290,54 @@ function uc_affiliate2_admin_settings() {
   return system_settings_form($form);
 }
 
+/**
+ * Define the affiliate admin settings form
+ */
+function uc_affiliate2_admin_settings() {
+  foreach (uc_order_status_list('general') as $status) {
+    $statuses[$status['id']] = $status['title'];
+  }
+  $form['affiliate_commission_order_statuses'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Order status'),
+    '#default_value' => variable_get('affiliate_commission_order_statuses', array('completed' => 'completed')),
+    '#description' => t('Where in the order status(es) will the commissions be assigned.'),
+    '#options' => $statuses,
+  );
+  $form['affiliate_invalid_redirect'] = array(
+    '#type' => 'textfield',
+    '#title' => t('On an invalid affiliate URL, redirect to'),
+    '#description' => t('When an invalid username is used as a subdomain, the user will be redirected to this URL.'),
+    '#default_value' => variable_get('affiliate_invalid_redirect', '')
+  );
+  $form['affiliate_enable_subdomain_handling'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable affiliate subdomain handling'),
+    '#description' => t("If enabled, this module will record affiliate actions if customers visit the site through an affiliate subdomain, like john.thissite.com. Enable this only if drupal is not installed on a subdomain."),
+    '#default_value' => variable_get('affiliate_enable_subdomain_handling', 0),
+  );
+  $form['affiliate_enable_recurring_commission'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable affiliate commissions for subsequent orders'),
+    '#description' => t("If enabled, on subsequent orders after a user has made a purchase will grant commissions to the original affiliate if no affiliate information is available from the session or cookie."),
+    '#default_value' => variable_get('affiliate_enable_recurring_commission', 0),
+  );
+
+  foreach (_payment_method_list() as $method) {
+    $payment_methods[$method['id']] = $method['name'];
+  }
+
+  $form['affiliate_no_commission_payment_methods'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Disable commission for these Payment methods'),
+    '#default_value' => variable_get('affiliate_no_commission_payment_methods', array()),
+    '#description' => t('You can disable commission for certain Payment methods'),
+    '#options' => $payment_methods,
+  );
+
+  return system_settings_form($form);
+}
+
 function uc_affiliate2_admin_settings_validate($form, &$form_state) {
   $url = $form_state['values']['affiliate_invalid_redirect'];
 
@@ -330,14 +358,15 @@ function uc_affiliate2_admin_settings_validate($form, &$form_state) {
  */
 function uc_affiliate2_monthly_report() {
    // The month we are viewing. If this is empty, the current month is assumed.
-  $month_timestamp = arg(4);
+  $month = arg(4);
 
-  if ($month_timestamp && is_numeric($month_timestamp)) {
-    $date_array = getdate($month_timestamp);
+  $date_start = strtotime($month);
+  if ($date_start === FALSE || $date_start == -1) { // PHP > 5.1.0 returns FALSE instead of -1
+    $month = date(UC_AFFILIATE2_REPORT_DATE_FORMAT);
+    $date_start = strtotime($month);
   }
-  else {
-    $date_array = getdate();
-  }
+  $date_end = strtotime('+'. UC_AFFILIATE2_REPORT_DATE_INTERVAL, $date_start);
+
 
    // Used to determine whether to show the paid form
   $uid_external = arg(5);
@@ -351,15 +380,6 @@ function uc_affiliate2_monthly_report() {
   );
 
   // define the query
-  $date_start = mktime(0, 0, 0, $date_array['mon'], 1, $date_array['year']);
-
-  if ($date_array['mon'] == 12) {
-    $date_end = mktime(0, 0, 0, 1, 1, $date_array['year'] + 1);
-  }
-  else {
-    $date_end = mktime(0, 0, 0, $date_array['mon'] + 1, 1, $date_array['year']);
-  }
-
   $sql = 'SELECT ac.aid, ac.commission, uo.order_total FROM {uc_affiliate2_commission} AS ac LEFT OUTER JOIN {uc_orders} AS uo ON ac.order_id = uo.order_id WHERE uo.created BETWEEN %d AND %d';
   $result = db_query($sql, $date_start, $date_end);
 
@@ -389,7 +409,7 @@ function uc_affiliate2_monthly_report() {
       $paid = drupal_get_form('uc_affiliate2_admin_users_paid_form', $amount, $uid, $date_start);
     }
     else {
-      $paid = l($amount, join('/', array(arg(0), arg(1), arg(2), arg(3), $date_start, $uid)));
+      $paid = l($amount, join('/', array(arg(0), arg(1), arg(2), arg(3), $month, $uid)));
     }
 
     $rows[] = array(
@@ -400,9 +420,9 @@ function uc_affiliate2_monthly_report() {
     );
   }
 
-  $output = "<p>". t("Displaying affiliate sales and commissions for ") . format_date($date_start, 'custom', 'M Y') .".";
-  $output .= t("Show ") . l(t('previous month'), join('/', array(arg(0), arg(1), arg(2), arg(3), $date_start-1)));
-  $output .= t(" or ") . l(t('next month'), join('/', array(arg(0), arg(1), arg(2), arg(3), $date_end))) .'.';
+  $output = "<p>". t("Displaying affiliate sales and commissions for ") . str_replace('-', ' ', $month) .". ";
+  $output .= t("Show ") . l(t('previous month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date(UC_AFFILIATE2_REPORT_DATE_FORMAT, strtotime('-'. UC_AFFILIATE2_REPORT_DATE_INTERVAL, $date_start)))));
+  $output .= t(" or ") . l(t('next month'), join('/', array(arg(0), arg(1), arg(2), arg(3), date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $date_end)))) .'.</p>';
 
   $output .= theme('table', $header, $rows);
 

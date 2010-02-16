@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.module,v 1.18.2.58 2010/02/15 02:55:14 univate Exp $
+// $Id: uc_affiliate2.module,v 1.18.2.59 2010/02/16 00:42:39 univate Exp $
 
 
 /**
@@ -53,17 +53,34 @@ function uc_affiliate2_menu() {
     'access arguments' => $access,
     'file' => 'uc_affiliate2.admin.inc',
   );
-  $items['admin/store/affiliate/settings'] = array(
-    'title' => 'Settings',
+  $items['admin/store/affiliate/reports'] = array(
+    'title' => 'Reports',
+    'page callback' => 'uc_affiliate2_monthly_report',
+    'access arguments' => $access,
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -8,
+    'file' => 'uc_affiliate2.admin.inc',
+  );
+  $items['admin/store/affiliate/banners'] = array(
+    'title' => 'Banner/Links',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('uc_affiliate2_admin_settings'),
+    'page arguments' => array('uc_affiliate2_banner_settings'),
     'access arguments' => $access,
     'type' => MENU_LOCAL_TASK,
     'file' => 'uc_affiliate2.admin.inc',
   );
-  $items['admin/store/affiliate/reports'] = array(
-    'title' => 'Reports',
-    'page callback' => 'uc_affiliate2_monthly_report',
+  $items['admin/store/affiliate/commissions'] = array(
+    'title' => 'Commissions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_affiliate2_commission_settings'),
+    'access arguments' => $access,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'uc_affiliate2.admin.inc',
+  );
+  $items['admin/store/affiliate/settings'] = array(
+    'title' => 'Settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_affiliate2_admin_settings'),
     'access arguments' => $access,
     'type' => MENU_LOCAL_TASK,
     'file' => 'uc_affiliate2.admin.inc',
