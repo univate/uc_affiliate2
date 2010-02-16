@@ -11,6 +11,8 @@ This release is brought to you by univate, who has done a ton of good work on th
 -- add CA support [trigger: commission_applied], [conditions: has_affiliate, check_commission, check_level], [actions: override_commission, send_affiliate_email]
 -- add token support for the affiliate email
 -- add 'level' field to the commission table
+-- separate affiliate settings page into 3 tabs for banners, commissions and settings.
+-- fixed reporting so that users in differnt timezone will all see the same result
 
 Version 2.5rc1
 **************
