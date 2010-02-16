@@ -8,6 +8,10 @@
  *
  */
 
+/**
+ * The ensure the date and interval used in the reports remain consistant
+ * across all pages we define them here.
+ */
 define('UC_AFFILIATE2_REPORT_DATE_FORMAT', 'M-Y');
 define('UC_AFFILIATE2_REPORT_DATE_INTERVAL', '1 month');
 
