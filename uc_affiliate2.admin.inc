@@ -537,6 +537,8 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
     '#value' => t("This sets an alternative commission structure for this product. When appling commissions the first commission structure below that matches the affiliate will be used. If the commission structure is set to 0, the product won't be present in the generated links, and no commissions will be given for it. Otherwise this should be a comma separated list of number(s) with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1"),
   );
 
+  $num_rules = 1 + db_result(db_query("SELECT count(*) FROM {uc_affiliate2_product_commission} WHERE nid = %d", $node->nid));
+
   // Get commission structure for this product
   $commission_structure = 0;
   $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
@@ -571,32 +573,45 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
   );
   $form['product_commissions']['new']['weight'] = array(
     '#type' => 'weight',
-    '#delta' => 10,
-    '#default_value' => -10
+    '#delta' => $num_rules,
+    '#default_value' => -1 * $num_rules,
   );
 
-  $count = 0;
   while ($product_commission = db_fetch_object($result)) {
-    $delta = $product_commission->weight;
     $pcid = $product_commission->pcid;
-    $form['product_commissions'][$pcid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $delta );
-    $form['product_commissions'][$pcid]['rule'] = array('#value' => $rules[$product_commission->rule]);
+    $form['product_commissions'][$pcid]['weight'] = array(
+      '#type' => 'weight',
+      '#delta' => $num_rules,
+      '#default_value' => $product_commission->weight
+    );
+    $form['product_commissions'][$pcid]['rule'] = array(
+      '#value' => $rules[$product_commission->rule]
+    );
     if (!empty($product_commission->rule_match)) {
       switch($product_commission->rule) {
         case 'user':
           $user = user_load($product_commission->rule_match);
-          $form['product_commissions'][$pcid]['match'] = array('#value' => theme('username', $user));
+          $form['product_commissions'][$pcid]['match'] = array(
+            '#value' => theme('username', $user)
+          );
           break;
         case 'role':
           $role = db_result(db_query("SELECT name FROM {role} WHERE rid = %d", $product_commission->rule_match));
-          $form['product_commissions'][$pcid]['match'] = array('#value' => $role);
+          $form['product_commissions'][$pcid]['match'] = array(
+            '#value' => $role
+          );
           break;
       }
     }
-    $form['product_commissions'][$pcid]['commission_structure'] = array('#value' => unserialize($product_commission->commission_structure));
-    $form['product_commissions'][$pcid]['model'] = array('#value' => empty($product_commission->model) ? t('Any') : $product_commission->model);
-    $form['product_commissions'][$pcid]['delete'] = array('#type' => 'checkbox');
-    $count++;
+    $form['product_commissions'][$pcid]['commission_structure'] = array(
+      '#value' => unserialize($product_commission->commission_structure)
+    );
+    $form['product_commissions'][$pcid]['model'] = array(
+      '#value' => empty($product_commission->model) ? t('Any') : $product_commission->model
+    );
+    $form['product_commissions'][$pcid]['delete'] = array(
+      '#type' => 'checkbox'
+    );
   }
 
   $form['nid'] = array(
