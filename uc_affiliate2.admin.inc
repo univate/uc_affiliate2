@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.admin.inc,v 1.1.2.3 2010/02/17 04:24:26 univate Exp $
+// $Id: uc_affiliate2.admin.inc,v 1.1.2.4 2010/02/17 06:38:24 univate Exp $
 
 
 /**
@@ -492,7 +492,7 @@ function uc_affiliate2_order_edit_commissions_submit($form, &$form_state) {
   $commission = db_fetch_object(db_query("SELECT * FROM {uc_affiliate2_commission} WHERE commission_id=%d", $form_state['values']['commission_id']));
   $commission->commission = $form_state['values']['commission'];
   $commission->commission_notes = $form_state['values']['commission_notes'];
-  uc_affiliate2_save_commission($commission);
+  uc_affiliate2_commission_save($commission);
   $form_state['redirect'] = 'admin/store/orders/'. $form_state['values']['order_id'] .'/affiliates';
 }
 
