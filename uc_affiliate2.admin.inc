@@ -585,7 +585,7 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
       switch($product_commission->rule) {
         case 'user':
           $user = user_load($product_commission->rule_match);
-          $form['product_commissions'][$pcid]['match'] = array('#value' => $user->name);
+          $form['product_commissions'][$pcid]['match'] = array('#value' => theme('username', $user));
           break;
         case 'role':
           $role = db_result(db_query("SELECT name FROM {role} WHERE rid = %d", $product_commission->rule_match));
@@ -594,7 +594,7 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
       }
     }
     $form['product_commissions'][$pcid]['commission_structure'] = array('#value' => unserialize($product_commission->commission_structure));
-    $form['product_commissions'][$pcid]['model'] = array('#value' => $product_commission->model);
+    $form['product_commissions'][$pcid]['model'] = array('#value' => empty($product_commission->model) ? t('Any') : $product_commission->model);
     $form['product_commissions'][$pcid]['delete'] = array('#type' => 'checkbox');
     $count++;
   }
@@ -662,7 +662,7 @@ function uc_affiliate2_ahah($context) {
 function _uc_affiliate2_ahah_product_commissions_match($form_state) {
   switch ($form_state['values']['product_commissions']['new']['rule']) {
     case 'user':
-      $form['product_commissions']['new']['match'] = array(
+      $form['match'] = array(
         '#type' => 'textfield',
         '#size' => 12,
         '#autocomplete_path' => 'user/autocomplete',
@@ -670,16 +670,16 @@ function _uc_affiliate2_ahah_product_commissions_match($form_state) {
       break;
     case 'role':
       $roles = array('Select role ...') + user_roles(FALSE, 'act as affiliate');
-      $form['product_commissions']['new']['match'] = array(
+      $form['match'] = array(
         '#type' => 'select',
         '#options' => $roles,
       );
      break;
      default:
-       $form['product_commissions']['new']['match'] = array('#value' => '');
+       $form['match'] = array('#value' => '');
   }
 
-  $output = _uc_affiliate2_ahah_render($form, 'product_commissions[new][match]');
+  $output = _uc_affiliate2_ahah_render($form, 'match');
   print drupal_to_js(array('data' => $output, 'status' => true));
 }
 
