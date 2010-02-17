@@ -522,3 +522,191 @@ function uc_affiliate2_order_remove_commissions_submit($form, &$form_state) {
   db_query('DELETE FROM {uc_affiliate2_commission} WHERE commission_id=%d', $form_state['values']['commission_id']);
   $form_state['redirect'] = 'admin/store/orders/'. $form_state['values']['order_id'] .'/affiliates';
 }
+
+/**
+ * Form to associate attributes with products or classes.
+ */
+function uc_affiliate2_product_commission_form($form_state, $node) {
+  drupal_add_js('misc/autocomplete.js');
+  $form = array(
+    '#theme' => 'uc_affiliate2_product_commission_form',
+    '#cache' => TRUE,
+  );
+
+  $form['message'] = array(
+    '#value' => t("This sets an alternative commission structure for this product. When appling commissions the first commission structure below that matches the affiliate will be used. If the commission structure is set to 0, the product won't be present in the generated links, and no commissions will be given for it. Otherwise this should be a comma separated list of number(s) with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1"),
+  );
+
+  // Get commission structure for this product
+  $commission_structure = 0;
+  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
+
+  $form['product_commissions']['#theme'] = 'uc_affiliate2_product_commission_form_current';
+  $form['product_commissions']['#tree'] = TRUE;
+  // add new rule form
+  $rules = _uc_affiliate2_product_commission_rules();
+  $form['product_commissions']['new']['rule'] = array(
+    '#type' => 'select',
+    '#options' => array('Add commissions for ...') + $rules,
+    '#ahah' => array(
+      'event' => 'change',
+      'path' => 'uc_affiliate2/ahah/product_commissions_match',
+      'wrapper' => 'product-commission-match',
+      'method' => 'replace',
+      'effect' => 'fade',
+      'progress' => array(
+      ),
+    ),
+  );
+  $form['product_commissions']['new']['match'] = array(
+    '#value' => '<div id="product-commission-match"></div>'
+  );
+  $form['product_commissions']['new']['model'] = array(
+    '#type' => 'select',
+    '#options' => uc_product_get_models($node),
+  );
+  $form['product_commissions']['new']['commission_structure'] = array(
+    '#type' => 'textfield',
+    '#size' => 12,
+  );
+  $form['product_commissions']['new']['weight'] = array(
+    '#type' => 'weight',
+    '#delta' => 10,
+    '#default_value' => -10
+  );
+
+  $count = 0;
+  while ($product_commission = db_fetch_object($result)) {
+    $delta = $product_commission->weight;
+    $pcid = $product_commission->pcid;
+    $form['product_commissions'][$pcid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $delta );
+    $form['product_commissions'][$pcid]['rule'] = array('#value' => $rules[$product_commission->rule]);
+    if (!empty($product_commission->rule_match)) {
+      switch($product_commission->rule) {
+        case 'user':
+          $user = user_load($product_commission->rule_match);
+          $form['product_commissions'][$pcid]['match'] = array('#value' => $user->name);
+          break;
+        case 'role':
+          $role = db_result(db_query("SELECT name FROM {role} WHERE rid = %d", $product_commission->rule_match));
+          $form['product_commissions'][$pcid]['match'] = array('#value' => $role);
+          break;
+      }
+    }
+    $form['product_commissions'][$pcid]['commission_structure'] = array('#value' => unserialize($product_commission->commission_structure));
+    $form['product_commissions'][$pcid]['model'] = array('#value' => $product_commission->model);
+    $form['product_commissions'][$pcid]['delete'] = array('#type' => 'checkbox');
+    $count++;
+  }
+
+  $form['nid'] = array(
+    '#type' => 'value',
+    '#value' => $node->nid,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  return $form;
+}
+
+function uc_affiliate2_product_commission_form_submit($form, &$form_state) {
+  $nid = $form_state['values']['nid'];
+
+  // save the new record
+  if ($form_state['values']['product_commissions']['new']['commission_structure'] != '') {
+    $comm = new stdClass();
+    $comm->nid = $nid;
+    $comm->model = $form_state['values']['product_commissions']['new']['model'];
+    $comm->commission_structure = serialize($form_state['values']['product_commissions']['new']['commission_structure']);
+    $comm->rule = $form_state['values']['product_commissions']['new']['rule'];
+    $comm->rule_match = $form_state['values']['match'];
+    if ($comm->rule == 'user') {
+      $comm->rule_match = db_result(db_query("SELECT uid from {users} where name='%s'", $comm->rule_match));
+    }
+    $comm->weight = $form_state['values']['product_commissions']['new']['weight'];
+    uc_affiliate2_product_commission_save($comm);
+  }
+
+  // delete the ones that have been checked.
+  foreach ($form_state['values']['product_commissions'] as $pcid => $comm) {
+    if ($comm['delete'] == 1) {
+      // delete this record
+      uc_affiliate2_product_commission_delete($pcid);
+    }
+    else if (!empty($comm['weight'])) {
+      // set the weight
+      db_query("UPDATE {uc_affiliate2_product_commission} set weight = %d WHERE pcid = %d", $comm['weight'], $pcid);
+    }
+  }
+}
+
+
+
+/**
+ *
+ */
+function uc_affiliate2_ahah($context) {
+  $func = '_uc_affiliate2_ahah_'. $context;
+  $form_state['values'] = $_POST;
+  if (function_exists($func)) {
+    $func($form_state);
+  }
+  exit();
+}
+
+/**
+ *
+ */
+function _uc_affiliate2_ahah_product_commissions_match($form_state) {
+  switch ($form_state['values']['product_commissions']['new']['rule']) {
+    case 'user':
+      $form['product_commissions']['new']['match'] = array(
+        '#type' => 'textfield',
+        '#size' => 12,
+        '#autocomplete_path' => 'user/autocomplete',
+      );
+      break;
+    case 'role':
+      $roles = array('Select role ...') + user_roles(FALSE, 'act as affiliate');
+      $form['product_commissions']['new']['match'] = array(
+        '#type' => 'select',
+        '#options' => $roles,
+      );
+     break;
+     default:
+       $form['product_commissions']['new']['match'] = array('#value' => '');
+  }
+
+  $output = _uc_affiliate2_ahah_render($form, 'product_commissions[new][match]');
+  print drupal_to_js(array('data' => $output, 'status' => true));
+}
+
+/*
+ * This function is largely based on the poll module, its been simplified for reuse.
+ *   $fields is the specific form elements you want to attach via ahah,
+ *   $name is the form fields array key... e.g. the name for $form['title'] is "title"
+ */
+function _uc_affiliate2_ahah_render($fields, $name) {
+  $form_state = array('submitted' => FALSE);
+  $form_build_id = $_POST['form_build_id'];
+  // Add the new element to the stored form. Without adding the element to the
+  // form, Drupal is not aware of this new elements existence and will not
+  // process it. We retreive the cached form, add the element, and resave.
+  $form = form_get_cache($form_build_id, $form_state);
+  $form[$name] = $fields;
+  form_set_cache($form_build_id, $form, $form_state);
+  $form += array(
+    '#post' => $_POST,
+    '#programmed' => FALSE,
+  );
+  // Rebuild the form.
+  $form = form_builder($_POST['form_id'], $form, $form_state);
+
+  // Render the new output.
+  $new_form = $form[$name];
+  return drupal_render($new_form);
+}
+
+

@@ -233,6 +233,15 @@ function uc_affiliate2_menu() {
     'access callback' => '_uc_affiliate2_node_access',
     'access arguments' => array(1),
     '#weight' => 1,
+    'file' => 'uc_affiliate2.admin.inc',
+  );
+
+  $items['uc_affiliate2/ahah/%'] = array(
+    'page callback' => uc_affiliate2_ahah,
+    'page arguments' => array(2),
+    'access arguments' => $access,
+    'type' => MENU_CALLBACK,
+    'file' => 'uc_affiliate2.admin.inc',
   );
 
   return $items;
@@ -306,8 +315,7 @@ function _uc_affiliate2_get_products($mode = 'form', $show = array()) {
 
   $result = db_query("SELECT node.nid FROM {uc_products} uc_products
                         INNER JOIN {node} node ON uc_products.nid = node.nid
-                          WHERE node.status = 1
-                            AND node.nid NOT IN (SELECT nid FROM {uc_affiliate2_product_commission} WHERE commission_structure = 0)
+                      WHERE node.status = 1
                               $where", $show);
 
   if (!$result && !$where) {
@@ -316,6 +324,11 @@ function _uc_affiliate2_get_products($mode = 'form', $show = array()) {
 
   while ($node = db_fetch_object($result)) {
     $product = node_load($node->nid);
+
+    $product_commission = uc_affiliate2_get_product_commission($user, $node->nid);
+    if ($product_commission->commission_structure == 0) {
+      continue;
+    }
 
     // Grab terms for products, and the manufacturer
     $terms = array();
@@ -581,14 +594,6 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
   // sum the prices of products from each affiliate store
   $nids = array();
   foreach ($order->products as $product) {
-    $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $product->nid));
-    $product_commission_structure = unserialize($result->commission_structure);
-
-    // If the commission is specifically "0", then we ignore this product.
-    if ($product_commission_structure === '0') {
-      continue;
-    }
-
     $price_info = array(
       'price' => $product->price,
       'qty' => ($product->qty) ? $product->qty : 1,
@@ -607,10 +612,9 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
       $aff = $affiliate_id;
     }
     $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
-    $affcom[$aff]['nid'] = $product->nid;
-    $affcom[$aff]['products'][$product->nid]['price'] = $product->price;
-    $affcom[$aff]['products'][$product->nid]['qty'] = $product->qty;
-    $affcom[$aff]['products'][$product->nid]['total'] = $price;
+    $affcom[$aff]['products'][$product->nid][$product->model]['price'] = $product->price;
+    $affcom[$aff]['products'][$product->nid][$product->model]['qty'] = $product->qty;
+    $affcom[$aff]['products'][$product->nid][$product->model]['total'] = $price;
   }
 
   // node ids of each product. If there is only one product, we can use per product commissions
@@ -626,8 +630,10 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
       // calculate the commission for this affiliate/level
       $commission = 0;
       foreach($data['products'] as $pid => $product_data) {
-        $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $pid);
-        $commission += $comm_pct * $product_data['total'];
+        foreach($product_data as $model => $model_data) {
+          $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $pid, $model);
+          $commission += $comm_pct * $model_data['total'];
+        }
       }
       $comm = new stdClass();
       $comm->order_id = $order->order_id;
@@ -641,7 +647,7 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
 
       ca_pull_trigger('uc_affiliate2_apply_commission', $order, $comm);
       if ($comm->commission > 0) {
-        uc_affiliate2_save_commission($comm);
+        uc_affiliate2_commission_save($comm);
       }
     }
   }
@@ -656,25 +662,25 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
  *   Affiliate ID to remove commissions from (default is all affiliates on the order).
  */
 function uc_affiliate2_remove_commission($order, $affiliate_id = NULL) {
-    $result = db_query("SELECT aid FROM {uc_affiliate2_commission} WHERE order_id = %d", $order->order_id);
-    $affiliates = array();
+  $result = db_query("SELECT aid FROM {uc_affiliate2_commission} WHERE order_id = %d", $order->order_id);
+  $affiliates = array();
 
-    while($affiliate = db_fetch_array($result)) {
-      if (empty($affiliate_id) || $affiliate['aid'] == $affiliate_id) {
-        $affiliates[] = $affiliate['aid'];
-      }
+  while($affiliate = db_fetch_array($result)) {
+    if (empty($affiliate_id) || $affiliate['aid'] == $affiliate_id) {
+      $affiliates[] = $affiliate['aid'];
     }
+  }
 
-    if(count($affiliates) < 1) { // not an affiliate order
-      return;
-    }
+  if(count($affiliates) < 1) { // not an affiliate order
+    return;
+  }
 
-    db_query("DELETE FROM {uc_affiliate2_commission} WHERE order_id = %d", $order->order_id);
+  db_query("DELETE FROM {uc_affiliate2_commission} WHERE order_id = %d", $order->order_id);
 
-    foreach($affiliates as $affiliate) {
-      $note = t('Removed commission recorded for affiliate uid: @affiliate', array('@affiliate' => $affiliate));
-      uc_order_comment_save($order->order_id, $user->uid, $note);
-    }
+  foreach($affiliates as $affiliate) {
+    $note = t('Removed commission recorded for affiliate uid: @affiliate', array('@affiliate' => $affiliate));
+    uc_order_comment_save($order->order_id, $user->uid, $note);
+  }
 }
 
 /**
@@ -683,7 +689,7 @@ function uc_affiliate2_remove_commission($order, $affiliate_id = NULL) {
  * @param $comm
  *   A commission object.
  */
-function uc_affiliate2_save_commission($comm) {
+function uc_affiliate2_commission_save($comm) {
   global $user;
   // Update an existing row.
   drupal_alter('affiliate2_commission', $comm);
@@ -1066,79 +1072,42 @@ function uc_affiliate2_uc_message() {
   return $messages;
 }
 
-// Form to associate attributes with products or classes.
-function uc_affiliate2_product_commission_form($form_state, $node) {
-
-  $form = array(
-    '#theme' => 'uc_affiliate2_product_commission_form',
-    '#cache' => TRUE,
-  );
-
-  // Get commission structure for this product
-  $commission_structure = 0;
-  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
-
-  $form['product_commissions']['#theme'] = 'uc_affiliate2_product_commission_form_current';
-  $form['product_commissions']['#tree'] = TRUE;
-  $count = 0;
-  while ($product_commission = db_fetch_object($result)) {
-    $delta = $product_commission->weight;
-    $form['product_commissions'][$count]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $delta );
-    $form['product_commissions'][$count]['rule'] = array('#value' => $product_commission->rule);
-    if (isset($product->match)) { 
-      $form['product_commissions'][$count]['match'] = array('#value' => $product_commission->match);
-    }
-    $form['product_commissions'][$count]['commission_structure'] = array('#value' => unserialize($product_commission->commission_structure));
-    $count++;
-  }
-
-  $form['product_commissions']['new']['rule'] = array(
-    '#type' => 'select',
-    '#options' => array(
-      'all' => 'All affiliates',
-      'role' => 'User role',
-      'user' => 'User'),
-  );
-  $form['product_commissions']['new']['match'] = array(
-    '#value' => '<div id="product-commission-match"></div>'
-  );
-  $form['product_commissions']['new']['commission_structure'] = array(
-    '#type' => 'textfield',
-  );
-  $form['commission_structure'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Product Commission Structure'),
-    '#description' => t("Sets an alternative commission structure for this product.<br/>If set to 0, the product won't be present in the generated links, and no commissions will be given for it.<br/>Otherwise this should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1"),
-    '#default_value' => unserialize($commission_structure),
-    '#size' => 10
-  );
-
-  $form['nid'] = array(
-    '#type' => 'value',
-    '#value' => $node->nid,
-  );
-
-  $form['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Save'),
-  );
-  return $form;
-}
-
-function uc_affiliate2_product_commission_form_submit($form, &$form_state) {
-  $nid = $form_state['values']['nid'];
-  $commission_structure = $form_state['values']['commission_structure'];
-
-  $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $nid));
-  if ($result && $result->commission_structure) {
-    db_query('UPDATE {uc_affiliate2_product_commission} SET commission_structure= "%s" WHERE nid = %d', serialize($commission_structure), $nid);
+/**
+ * Save a product commission record.
+ */
+function uc_affiliate2_product_commission_save($comm) {
+  if (!empty($comm->commission_id)) {
+    // Update an existing row.
+    drupal_write_record('uc_affiliate2_product_commission', $comm, array('pcid'));
   }
   else {
-    db_query("INSERT INTO {uc_affiliate2_product_commission} (nid, commission_structure) VALUES (%d, '%s')", $nid, serialize($commission_structure));
+    drupal_write_record('uc_affiliate2_product_commission', $comm);
   }
+
+  return $comm->pcid;
 }
 
+/**
+ * Save a product commission record.
+ */
+function uc_affiliate2_product_commission_delete($pcid) {
+  db_query('DELETE FROM {uc_affiliate2_product_commission} where pcid=%d', $pcid);
+}
 
+/**
+ *
+ */
+function _uc_affiliate2_product_commission_rules() {
+  return array(
+    'all' => 'All affiliates',
+    'role' => 'User role',
+    'user' => 'User'
+  );
+}
+
+/**
+ *
+ */
 function _uc_affiliate2_clicked($account, $target_path) {
   global $base_url, $user;
 
@@ -1213,28 +1182,31 @@ function _uc_affiliate2_get_user($uid) {
  *   The affiliate commission being obtained.
  * @param $nid
  *   The node ID of the product being purchased.
+ * @param $model
+ *   The model/sku of the product being purchased.
  *
  * @return
  *   Commission percentate as a value between 0 and 1.
  */
-function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0) {
+function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0, $model = '') {
   global $user;
 
-  $account = user_load(array('uid' => $_SESSION['affiliate']));
+  $account = user_load(array('uid' => $aff_id));
 
-  if ($account->commission) {
+  if ($account->commission && $level == 1) {
     return $account->commission / 100; // we have a commission percentage defined specially for this affilate
   }
 
   $depth = variable_get('affiliate_hierarchy_depth', 5);
 
   //check if this product has commission set for it
-  $result = db_fetch_object(db_query("SELECT uapc.commission_structure FROM {uc_affiliate2_product_commission} AS uapc WHERE uapc.nid = %d", $nid));
-  $product_commission_structure = unserialize($result->commission_structure);
-
+  $product_commission = uc_affiliate2_get_product_commission($account, $nid, $model);
+  if ($product_commission->commmission_structure === '0') {
+    $product_commission = FALSE;
+  }
   // if the commission is defined, and this product is alone in the cart
-  if ($product_commission_structure) {
-    $default_structure = $product_commission_structure;
+  if ($product_commission) {
+    $default_structure = $product_commission->commission_structure;
   }
   else {
     $default_structure = variable_get('affiliate_commission_structure', '5,3,2,2,1');
@@ -1255,7 +1227,6 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0)
     $structure = $default_structure;
   }
 
-
   $commission_percents = split(',', $structure);
 
   if ($level <= $depth && $level <= count($commission_percents)) {
@@ -1265,6 +1236,31 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0)
   return 0;
 }
 
+/**
+ * Find the commission structure that matches for the specific product and user.
+ */
+function uc_affiliate2_get_product_commission($account, $nid, $model = '') {
+  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $nid);
+  while ($product_commission = db_fetch_object($result)) {
+    if (empty($product_commission->model) || $product_commission->model == $model) {
+      $product_commission->commission_structure = unserialize($product_commission->commission_structure);
+      switch ($product_commission->rule) {
+        case 'user':
+          if ($account->uid == $product_commission->rule_match) {
+            return $product_commission;
+          }
+          break;
+        case 'role':
+          if (array_key_exists($product_commission->rule_match, $account->roles)) {
+            return $product_commission;
+          }
+        case 'all':
+          return $product_commission;
+      }
+    }
+  }
+  return FALSE;
+}
 
 /**
  * Implementation of hook_theme()
@@ -1315,7 +1311,7 @@ function theme_uc_affiliate2_columns_checkboxes($e) {
  *
  */
 function theme_uc_affiliate2_product_commission_form_current($form) {
-  $header = array('', '', t('Commission Structure'), t('Weight'));
+  $header = array('', '', t('Commission Structure'), t('Weight'), t('SKU'), t('Delete'));
   drupal_add_tabledrag('product-commissions', 'order', 'sibling', 'commission-weight');
 
   foreach (element_children($form) as $key) {
@@ -1327,6 +1323,8 @@ function theme_uc_affiliate2_product_commission_form_current($form) {
     $row[] = drupal_render($form[$key]['match']);
     $row[] = drupal_render($form[$key]['commission_structure']);
     $row[] = drupal_render($form[$key]['weight']);
+    $row[] = drupal_render($form[$key]['model']);
+    $row[] = drupal_render($form[$key]['delete']);
     $rows[] = array('data' => $row, 'class' => 'draggable tabledrag-leaf');
   }
   $output = theme('table', $header, $rows, array('id' => 'product-commissions'));
