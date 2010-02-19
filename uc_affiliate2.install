@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.install,v 1.2.2.7 2010/02/17 04:24:26 univate Exp $
+// $Id: uc_affiliate2.install,v 1.2.2.8 2010/02/19 01:22:42 univate Exp $
 
 /**
  * Implementation of hook_schema().
@@ -265,7 +265,7 @@ function uc_affiliate2_update_6001() {
  */
 function uc_affiliate2_update_6002() {
   $ret = array();
-  db_change_field(&$ret, 'uc_affiliate2_product_commission', 'pcid', 'pcid',
+  db_change_field($ret, 'uc_affiliate2_product_commission', 'pcid', 'pcid',
     array('type' => 'serial', 'not null' => TRUE),
     array('primary key' => array('pcid')));
   return $ret;
