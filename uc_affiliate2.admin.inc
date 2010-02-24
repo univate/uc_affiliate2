@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.admin.inc,v 1.1.2.4 2010/02/17 06:38:24 univate Exp $
+// $Id: uc_affiliate2.admin.inc,v 1.1.2.5 2010/02/24 06:17:12 univate Exp $
 
 
 /**
@@ -291,6 +291,18 @@ function uc_affiliate2_commission_settings() {
 }
 
 /**
+ * Validate function for commission settings form.
+ */
+function uc_affiliate2_commission_settings_validate($form, &$form_state) {
+  $roles = user_roles(FALSE, 'act as affiliate');
+  foreach ($roles as $rid => $role) {
+    if (!strtotime($form_state['values']['affiliate_cookie_lifetime_'. $rid])) {
+      form_set_error('affiliate_cookie_lifetime_'. $rid, t('Invalid strtotime syntax.'));
+    }
+  }
+}
+
+/**
  * Define the affiliate admin settings form
  */
 function uc_affiliate2_admin_settings() {
@@ -344,13 +356,6 @@ function uc_affiliate2_admin_settings_validate($form, &$form_state) {
   if (!empty($url) && ($url != check_url($url) || strpos($url, '://') !== FALSE)) {
     form_set_error('affiliate_invalid_redirect', t('Please enter a valid Drupal path, without the http and domain parts.'));
   }
-
-  $roles = user_roles(FALSE, 'act as affiliate');
-  foreach ($roles as $rid => $role) {
-    if (!strtotime($form_state['values']['affiliate_cookie_lifetime_'. $rid])) {
-      form_set_error('affiliate_cookie_lifetime_'. $rid, t('Invalid strtotime syntax.'));
-    }
-  }
 }
 
 /**
@@ -367,6 +372,8 @@ function uc_affiliate2_monthly_report() {
   }
   $date_end = strtotime('+'. UC_AFFILIATE2_REPORT_DATE_INTERVAL, $date_start);
 
+  // Recreate the date to ensure its in the correct format.
+  $month = date(UC_AFFILIATE2_REPORT_DATE_FORMAT, $date_start);
 
    // Used to determine whether to show the paid form
   $uid_external = arg(5);
