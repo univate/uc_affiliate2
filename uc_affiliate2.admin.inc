@@ -246,9 +246,9 @@ function uc_affiliate2_commission_settings() {
   $form['affiliate_commission_structure'] = array(
     '#type' => 'textfield',
     '#title' => t('Default Affiliate Commission Structure'),
-    '#description' => t('Sets the default commission structure.  This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1'),
-    '#default_value' => variable_get('affiliate_commission_structure', '5,3,2,2,1'),
-    '#size' => 10
+    '#description' => t("Sets the default commission structure.  This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy. Commission can either be represented as percentages by adding a '%' symbol after the number or as a fixed amount in the stores currency by a number with no symbol. Example: 5%,4%,2%,2%,1%"),
+    '#default_value' => implode(',', variable_get('affiliate_commission_structure', array('5%','3%','2%','2%','1%'))),
+    '#size' => 40
   );
 
   $roles = user_roles(FALSE, 'act as affiliate');
@@ -263,9 +263,9 @@ function uc_affiliate2_commission_settings() {
     $form['affiliate_settings_role_'. $rid]['affiliate_commission_structure_'. $rid] = array(
       '#type' => 'textfield',
       '#title' => t('Affiliate Commission Structure for cookied role: @role', array('@role' => $role)),
-      '#description' => t('Sets the commission structure for the role, when the user has returned via cookie. This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1'),
-      '#default_value' => variable_get('affiliate_commission_structure_'. $rid, '5,3,2,2,1'),
-      '#size' => 10
+      '#description' => t('Sets the commission structure for the role, when the user has returned via cookie. This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5%,4%,2%,2%,1%'),
+      '#default_value' => implode(',', variable_get('affiliate_commission_structure_'. $rid, array('5%','3%','2%','2%','1%'))),
+      '#size' => 40
     );
     $form['affiliate_settings_role_'. $rid]['affiliate_commission_'. $rid .'_switch_after'] = array(
       '#type' => 'textfield',
@@ -541,14 +541,10 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
   );
 
   $form['message'] = array(
-    '#value' => t("This sets an alternative commission structure for this product. When appling commissions the first commission structure below that matches the affiliate will be used. If the commission structure is set to 0, the product won't be present in the generated links, and no commissions will be given for it. Otherwise this should be a comma separated list of number(s) with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5,4,2,2,1"),
+    '#value' => t("This sets an alternative commission structure for this product. When appling commissions the first commission structure below that matches the affiliate will be used. If the commission structure is set to 0, the product won't be present in the generated links, and no commissions will be given for it. Otherwise this should be a comma separated list of number(s) with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5%,4%,2%,2%,1%"),
   );
 
   $num_rules = 1 + db_result(db_query("SELECT count(*) FROM {uc_affiliate2_product_commission} WHERE nid = %d", $node->nid));
-
-  // Get commission structure for this product
-  $commission_structure = 0;
-  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
 
   $form['product_commissions']['#theme'] = 'uc_affiliate2_product_commission_form_current';
   $form['product_commissions']['#tree'] = TRUE;
@@ -584,8 +580,13 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
     '#default_value' => -1 * $num_rules,
   );
 
+  // Get commission structure for this product
+  $commission_structure = 0;
+  $result = db_query("SELECT * FROM {uc_affiliate2_product_commission} WHERE nid = %d ORDER BY weight", $node->nid);
+
   while ($product_commission = db_fetch_object($result)) {
     $pcid = $product_commission->pcid;
+    $product_commission->commission_structure = unserialize($product_commission->commission_structure);
     $form['product_commissions'][$pcid]['weight'] = array(
       '#type' => 'weight',
       '#delta' => $num_rules,
@@ -611,7 +612,7 @@ function uc_affiliate2_product_commission_form($form_state, $node) {
       }
     }
     $form['product_commissions'][$pcid]['commission_structure'] = array(
-      '#value' => unserialize($product_commission->commission_structure)
+      '#value' => implode(',', $product_commission->commission_structure)
     );
     $form['product_commissions'][$pcid]['model'] = array(
       '#value' => empty($product_commission->model) ? t('Any') : $product_commission->model
@@ -641,7 +642,7 @@ function uc_affiliate2_product_commission_form_submit($form, &$form_state) {
     $comm = new stdClass();
     $comm->nid = $nid;
     $comm->model = $form_state['values']['product_commissions']['new']['model'];
-    $comm->commission_structure = serialize($form_state['values']['product_commissions']['new']['commission_structure']);
+    $comm->commission_structure = explode(',', $form_state['values']['product_commissions']['new']['commission_structure']);
     $comm->rule = $form_state['values']['product_commissions']['new']['rule'];
     $comm->rule_match = $form_state['values']['match'];
     if ($comm->rule == 'user') {

@@ -168,8 +168,8 @@ function uc_affiliate2_schema() {
       ),
       'commission_structure' => array(
         'type' => 'text',
-        'size' => 'big',
         'not null' => TRUE,
+        'serialize' => TRUE,
       ),
       'rule' => array(
         'type' => 'varchar',
@@ -268,5 +268,36 @@ function uc_affiliate2_update_6002() {
   db_change_field($ret, 'uc_affiliate2_product_commission', 'pcid', 'pcid',
     array('type' => 'serial', 'not null' => TRUE),
     array('primary key' => array('pcid')));
+  return $ret;
+}
+
+/**
+ * Make the commission structure field an actual serialised value and update to
+ * the new format that requires '%' to differentiate between fixed commissions.
+ */
+function uc_affiliate2_update_6003() {
+  $ret = array();
+
+  // change the commission stucture variables
+  if (variable_get('affiliate_commission_structure', NULL) !== NULL) {
+    $ret[] = array('success' => TRUE, 'query' => "Updating default commission structure");
+    variable_set('affiliate_commission_structure', explode(',', str_replace(',', '%,', variable_get('affiliate_commission_structure', '')) .'%'));
+  }
+  $roles = user_roles(TRUE);
+  foreach ($roles as $rid => $role) {
+    if (variable_get('affiliate_commission_structure_'. $rid, NULL) !== NULL) {
+      $ret[] = array('success' => TRUE, 'query' => "Updating default role id ". $rid ." commission structure");
+      variable_set('affiliate_commission_structure_'. $rid, explode(',', str_replace(',', '%,', variable_get('affiliate_commission_structure_'. $rid, '')) .'%'));
+    }
+  }
+
+  // change the product specific commission structures
+  $result = db_query('SELECT pcid, commission_structure FROM {uc_affiliate2_product_commission}');
+  while ($comm = db_fetch_object($result)) {
+    $commission = serialize(explode(',', str_replace(',', '%,', unserialize($comm->commission_structure)) .'%'));
+    db_query("UPDATE {uc_affiliate2_product_commission} SET commission_structure = '%s' WHERE pcid = %d", $commission, $comm->pcid); 
+    $ret[] = array('success' => TRUE, 'query' => "Updating product commission structure - ". $comm->pcid);
+  }
+
   return $ret;
 }

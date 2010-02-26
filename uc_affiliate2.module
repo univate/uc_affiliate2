@@ -10,7 +10,6 @@
  * and affiliate commissions
  */
 
-
 /**
  * Implementation of hook_help().
  */
@@ -612,13 +611,12 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
       $aff = $affiliate_id;
     }
     $affcom[$aff]['total'] = isset($affcom[$aff]['total']) ? $affcom[$aff]['total'] + $price : $price;
-    $affcom[$aff]['products'][$product->nid][$product->model]['price'] = $product->price;
-    $affcom[$aff]['products'][$product->nid][$product->model]['qty'] = $product->qty;
-    $affcom[$aff]['products'][$product->nid][$product->model]['total'] = $price;
+    $affcom[$aff]['products'][$product->nid][$product->model] = array(
+      'price' => $product->price,
+      'qty'   => $product->qty,
+      'total' => $price,
+    );
   }
-
-  // node ids of each product. If there is only one product, we can use per product commissions
-  $nids = array_unique($nids);
 
   // write commission records
   foreach ($affcom as $affid => $data) {
@@ -631,14 +629,19 @@ function uc_affiliate2_apply_commission($order, $affiliate_id = NULL) {
       $commission = 0;
       foreach($data['products'] as $pid => $product_data) {
         foreach($product_data as $model => $model_data) {
-          $comm_pct = _uc_affiliate2_get_commission_percentage($aff, $level, $pid, $model);
-          $commission += $comm_pct * $model_data['total'];
+          $comm = _uc_affiliate2_get_commission($aff, $level, $pid, $model);
+          if ($comm_pct = _uc_affiliate2_commission_is_percentage($comm) !== FALSE) {
+            $commission += $model_data['total'] * $comm_pct / 100;
+          }
+          else {
+            $commission += $comm * $model_data['qty'];
+          }
         }
       }
       $comm = new stdClass();
       $comm->order_id = $order->order_id;
       $comm->aid = $aff;
-      $comm->commission = $commission; //TODO should this be rounded?
+      $comm->commission = $commission; //@todo: should this be rounded in any way?
       $comm->level = $level;
       $comm->commission_notes = t('Level @level commission recorded for affiliate uid:@affiliate', array('@affiliate' => $aff, '@percent' => $comm_pct*100, '@level' => $level, '@commission' => uc_currency_format($comm), '@ordertotal' => uc_currency_format($total), '@firstname' => $order->billing_first_name, '@lastname' => $order->billing_last_name));
 
@@ -1174,6 +1177,23 @@ function _uc_affiliate2_get_user($uid) {
 }
 
 /**
+ * Determines if the format of the commission is in the correct format for a
+ * percentage value.
+ *
+ * @param $commission
+ *   The commission value.
+ * @return
+ *   The commission percentage if commission value is in the correct format,
+ *   else FALSE if commission is not a percentage.
+ */
+function _uc_affiliate2_commission_is_percentage($commission) {
+  if (substr(trim($commission), -1) == '%') {
+    return floatval($commission);
+  }
+  return FALSE;
+}
+
+/**
  * Get an affiliates commission percentage for the given level
  *
  * @param $aff_id
@@ -1188,7 +1208,7 @@ function _uc_affiliate2_get_user($uid) {
  * @return
  *   Commission percentate as a value between 0 and 1.
  */
-function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0, $model = '') {
+function _uc_affiliate2_get_commission($aff_id, $level = 1, $nid = 0, $model = '') {
   global $user;
 
   $account = user_load(array('uid' => $aff_id));
@@ -1202,22 +1222,21 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0,
   //check if this product has commission set for it
   $product_commission = uc_affiliate2_get_product_commission($account, $nid, $model);
   if ($product_commission->commmission_structure === '0') {
-    $product_commission = FALSE;
+    return 0;
   }
   // if the commission is defined, and this product is alone in the cart
   if ($product_commission) {
     $default_structure = $product_commission->commission_structure;
   }
   else {
-    $default_structure = variable_get('affiliate_commission_structure', '5,3,2,2,1');
+    $default_structure = variable_get('affiliate_commission_structure', array('5%','3%','2%','2%','1%'));
   }
 
   if (!empty($_SESSION['affiliate_cookie_timestamp'])) {
     $switch_after = variable_get('affiliate_commission_'. $_SESSION['affiliate_rid'] .'_switch_after', '2 days');
-    $now = time();
 
-    if ($now >= strtotime($switch_after, $_SESSION['affiliate_cookie_timestamp'])) {
-      $structure = variable_get('affiliate_commission_structure_'. $_SESSION['affiliate_rid'], '5,3,2,2,1');
+    if (strtotime($switch_after, $_SESSION['affiliate_cookie_timestamp']) <= time()) {
+      $structure = variable_get('affiliate_commission_structure_'. $_SESSION['affiliate_rid'], array('5%','3%','2%','2%','1%'));
     }
     else {
       $structure = $default_structure;
@@ -1227,10 +1246,8 @@ function _uc_affiliate2_get_commission_percentage($aff_id, $level = 1, $nid = 0,
     $structure = $default_structure;
   }
 
-  $commission_percents = split(',', $structure);
-
-  if ($level <= $depth && $level <= count($commission_percents)) {
-    return $commission_percents[$level-1] / 100;
+  if ($level <= $depth && $level <= count($structure)) {
+    return $structure[$level-1];
   }
 
   return 0;
