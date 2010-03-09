@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.install,v 1.2.2.8 2010/02/19 01:22:42 univate Exp $
+// $Id: uc_affiliate2.install,v 1.2.2.10 2010/03/09 07:44:22 univate Exp $
 
 /**
  * Implementation of hook_schema().
