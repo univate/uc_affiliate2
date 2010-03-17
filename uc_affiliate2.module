@@ -939,6 +939,13 @@ function uc_affiliate2_click($username = 0) {
     $goto = join('/', $args);
   }
 
+  // There are some case where you want to use the destination query like in
+  // cart_links module where you direct to one url to perform an action and
+  // use the ?destination= argument to define the actual destination url.
+  if (isset($_REQUEST['destination'])) {
+    $goto .= '?destination='. $_REQUEST['destination'];
+  }
+
   // ready to go, go through all the cases
   if ($subdomain && $subdomain != 'www') { // subdomain ($affiliate.site.com)
     $found_affiliate = FALSE;
