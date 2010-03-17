@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.admin.inc,v 1.1.2.6 2010/03/17 01:33:56 univate Exp $
+// $Id: uc_affiliate2.admin.inc,v 1.1.2.7 2010/03/17 01:39:08 univate Exp $
 
 
 /**
@@ -263,7 +263,7 @@ function uc_affiliate2_commission_settings() {
     $form['affiliate_settings_role_'. $rid]['affiliate_commission_structure_'. $rid] = array(
       '#type' => 'textfield',
       '#title' => t('Affiliate Commission Structure for cookied role: @role', array('@role' => $role)),
-      '#description' => t('Sets the commission structure for the role, when the user has returned via cookie. This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy.  Example: 5%,4%,2%,2%,1%'),
+      '#description' => t("Sets the commission structure for the role, when the user has returned via cookie. This should be a comma separated list of number with the first value corresponding to the first level in the hierarchy and each successive value corresponding to the next level in the hierarchy. Commission can either be represented as percentages by adding a '%' symbol after the number or as a fixed amount in the stores currency by a number with no symbol. Example: 5%,4%,2%,2%,1%"),
       '#default_value' => implode(',', variable_get('affiliate_commission_structure_'. $rid, array('5%','3%','2%','2%','1%'))),
       '#size' => 40
     );
