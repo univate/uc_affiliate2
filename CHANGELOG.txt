@@ -14,6 +14,7 @@ This release is brought to you by univate, who has done a ton of good work on th
 -- separate affiliate settings page into 3 tabs for banners, commissions and settings.
 -- fixed reporting so that users in differnt timezone will all see the same result
 -- add an advanced rule based product commissions options for defining commission structures.
+-- support fixed commissions as well as percentage 
 
 Version 2.5rc1
 **************

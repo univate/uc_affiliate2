@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.admin.inc,v 1.1.2.5 2010/02/24 06:17:12 univate Exp $
+// $Id: uc_affiliate2.admin.inc,v 1.1.2.6 2010/03/17 01:33:56 univate Exp $
 
 
 /**
