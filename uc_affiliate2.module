@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.module,v 1.18.2.61 2010/03/17 01:33:56 univate Exp $
+// $Id: uc_affiliate2.module,v 1.18.2.62 2010/03/22 04:11:13 univate Exp $
 
 
 /**
@@ -111,6 +111,12 @@ function uc_affiliate2_menu() {
     'access arguments' => $access,
     'type' => MENU_CALLBACK,
     'file' => 'uc_affiliate2.admin.inc',
+  );
+  $items['uc_affiliate2/autocomplete'] = array(
+    'title' => 'Affiliate Autocomplete',
+    'page callback' => 'uc_affiliate2_autocomplete',
+    'access arguments' => $access,
+    'type' => MENU_CALLBACK,
   );
 
 
@@ -493,10 +499,11 @@ function uc_affiliate2_form_uc_order_view_update_form_alter(&$form, $form_state)
     );
     $form['affiliate']['affiliate_id'] = array(
       '#type' => 'textfield',
-      '#title' => t('Affiliate id to credit or remove commissions on'),
+      '#title' => t('Affiliate id or username to credit or remove commissions on'),
       '#description' => t('Leave blank to match any affiliates.'),
       '#default_value' => _uc_affiliate2_get_user($form['#parameters'][2]->uid),
       '#size' => 20,
+      '#autocomplete_path' => 'uc_affiliate2/autocomplete',
     );
     $form['#submit'][] = 'uc_affiliate2_order_view_update_form_submit';
   }
@@ -1363,4 +1370,38 @@ function theme_uc_affiliate2_product_commission_form($form) {
   drupal_add_tabledrag('product-commissions', 'order', 'sibling', 'commission-weight');
   $output = drupal_render($form);
   return $output;
+}
+
+/**
+ * Autocomplete function for finding affiliates
+ */
+function uc_affiliate2_autocomplete($string){
+  $items = array();
+  if (is_numeric($string)) {
+    $sql = "SELECT u.uid, u.name, u.status, u.created, u.access
+            FROM {users} u
+              INNER JOIN {users_roles} ur ON u.uid = ur.uid
+            WHERE u.uid LIKE '%d%%' AND ur.rid IN (
+              SELECT r.rid
+              FROM {role} r
+                INNER JOIN {permission} p ON r.rid = p.rid
+              WHERE p.perm LIKE '%act as affiliate%')";
+  } else {
+      $sql = "SELECT u.uid, u.name, u.status, u.created, u.access
+              FROM {users} u
+              INNER JOIN {users_roles} ur ON u.uid = ur.uid
+              WHERE u.name LIKE '%s%%' AND ur.rid IN (
+                SELECT r.rid
+                FROM {role} r
+                  INNER JOIN {permission} p ON r.rid = p.rid
+                WHERE p.perm LIKE '%act as affiliate%')";
+  }
+
+  $result = db_query($sql, $string);
+
+  while($obj = db_fetch_object($result)) {
+    $items[$obj->uid] = check_plain($obj->name) . ' [ID: ' . $obj->uid . ']';
+  }
+  drupal_json($items);
+  exit();
 }
