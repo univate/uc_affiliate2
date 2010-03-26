@@ -299,7 +299,9 @@ function uc_affiliate2_commission_settings_validate($form, &$form_state) {
     if (!strtotime($form_state['values']['affiliate_cookie_lifetime_'. $rid])) {
       form_set_error('affiliate_cookie_lifetime_'. $rid, t('Invalid strtotime syntax.'));
     }
+    $form_state['values']['affiliate_commission_structure_'. $rid] = explode(',', $form_state['values']['affiliate_commission_structure_'. $rid]);
   }
+  $form_state['values']['affiliate_commission_structure'] = explode(',', $form_state['values']['affiliate_commission_structure']);
 }
 
 /**
