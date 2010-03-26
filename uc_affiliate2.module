@@ -415,15 +415,16 @@ function _uc_affiliate2_get_amounts($filter, $filter_value, $index) {
 /**
  * Implementation of hook_user()
  */
-function uc_affiliate2_user($op, &$edit, &$user, $category = NULL) {
+function uc_affiliate2_user($op, &$edit, &$account, $category = NULL) {
+  global $user;
   switch ($op) {
     case 'insert':
       // update user count for affiliate and associate user with affiliate
       $aff = $_SESSION['affiliate'];
       if ($aff) {
-        db_query('INSERT INTO {uc_affiliate2_users} (aid, uid) VALUES (%d, %d)', $aff, $user->uid);
+        db_query('INSERT INTO {uc_affiliate2_users} (aid, uid) VALUES (%d, %d)', $aff, $account->uid);
 
-        $message = t('User !name referred by user id !affiliate', array('!name' => theme('username', $user),
+        $message = t('User !name referred by user id !affiliate', array('!name' => theme('username', $account),
                                                                         '!affiliate' => theme('placeholder', $aff)
                                                                         )
                      );
@@ -432,13 +433,13 @@ function uc_affiliate2_user($op, &$edit, &$user, $category = NULL) {
       }
       break;
     case 'view':
-      if (user_access('act as affiliate', $user) && $user->uid > 1) {
-        $user->content['affiliate'] = array(
+      if (user_access('act as affiliate', $account) && $account->uid == $user->uid && $account->uid > 1) {
+        $account->content['affiliate'] = array(
           '#type' => 'user_profile_category',
           '#title' => t('Affiliate'),
           'link' => array(
             '#type' => 'user_profile_item',
-            '#value' => t('Manage your business ') . l(t('here'), "user/{$user->uid}/affiliate"),
+            '#value' => t('Manage your business ') . l(t('here'), "user/{$account->uid}/affiliate"),
           ),
         );
 
