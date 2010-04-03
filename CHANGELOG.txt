@@ -12,7 +12,7 @@ This release is brought to you by univate, who has done a ton of good work on th
 -- add token support for the affiliate email
 -- add 'level' field to the commission table
 -- separate affiliate settings page into 3 tabs for banners, commissions and settings.
--- fixed reporting so that users in differnt timezone will all see the same result
+-- fixed reporting so that users in different timezone will all see the same result
 -- add an advanced rule based product commissions options for defining commission structures.
 -- support fixed commissions as well as percentage 
 

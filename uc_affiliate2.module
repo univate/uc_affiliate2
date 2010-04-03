@@ -1,5 +1,5 @@
 <?php
-// $Id: uc_affiliate2.module,v 1.18.2.63 2010/03/26 05:39:54 univate Exp $
+// $Id: uc_affiliate2.module,v 1.18.2.66 2010/03/30 19:12:24 bojanz Exp $
 
 
 /**
@@ -946,6 +946,10 @@ function uc_affiliate2_click($username = 0) {
 
     $goto = join('/', $args);
   }
+  else if (arg(0) != variable_get('uc_affiliate2_path', 'affiliate')) {
+    // fix for the ?a= affiliate links (without this, node/3?a=4 will go to the homepage, and not to node/3)
+    $goto = $_GET['q'];
+  }
 
   // There are some case where you want to use the destination query like in
   // cart_links module where you direct to one url to perform an action and
@@ -994,8 +998,9 @@ function uc_affiliate2_click($username = 0) {
   }
 
   if($_COOKIE['affiliate']['update_click']) {
-    db_query("UPDATE {uc_affiliate2_clicks} SET cookie_status = 2 WHERE aid = %d AND time = %d", $_COOKIE['affiliate']['uid'], $_COOKIE['affiliate']['timestamp']);
-    setcookie('affiliate[update_click]', 1, time() - 3600, '/');
+    // The update_click cookie was set to the click_id so we can know exactly which click to update.
+    db_query('UPDATE {uc_affiliate2_clicks} SET cookie_status = 2 WHERE click_id = %d', $_COOKIE['affiliate']['update_click']);
+    setcookie('affiliate[update_click]', 0, time() - 3600, '/');
   }
 
   if ($found_affiliate === TRUE) {
@@ -1153,7 +1158,6 @@ function _uc_affiliate2_clicked($account, $target_path) {
     setcookie('affiliate[uid]', $account->uid, $cookie_lifetime, '/');
     setcookie('affiliate[rid]', $rid, $cookie_lifetime, '/');
     setcookie('affiliate[timestamp]', $time, $cookie_lifetime, '/');
-    setcookie('affiliate[update_click]', 1, $cookie_lifetime, '/');
   }
 
   // store affiliate id in session and increment click count
@@ -1164,6 +1168,13 @@ function _uc_affiliate2_clicked($account, $target_path) {
   db_query("INSERT INTO {uc_affiliate2_clicks} (aid, time, cookie_status, client_ip, referrer, destination)
               VALUES (%d, %d, %d, '%s', '%s', '%s')",
                 $account->uid, $time, $set_cookie, $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_REFERER'], $target_path);
+
+  // If we're setting cookies, also set one so the cookie status for the click can be updated.
+  if ($set_cookie) {
+    // By setting this to the click_id, this exact click can be updated when the cookie comes back.
+    $click_id = db_last_insert_id('uc_affiliate2_clicks', 'click_id');
+    setcookie('affiliate[update_click]', $click_id, $cookie_lifetime, '/');
+  }
 
   return TRUE;
 }
@@ -1239,13 +1250,7 @@ function _uc_affiliate2_get_commission($aff_id, $level = 1, $nid = 0, $model = '
   if ($product_commission->commmission_structure === '0') {
     return 0;
   }
-  // if the commission is defined, and this product is alone in the cart
-  if ($product_commission) {
-    $default_structure = $product_commission->commission_structure;
-  }
-  else {
-    $default_structure = variable_get('affiliate_commission_structure', array('5%','3%','2%','2%','1%'));
-  }
+  $default_structure = $product_commission->commission_structure;
 
   if (!empty($_SESSION['affiliate_cookie_timestamp'])) {
     $switch_after = variable_get('affiliate_commission_'. $_SESSION['affiliate_rid'] .'_switch_after', '2 days');
@@ -1291,7 +1296,13 @@ function uc_affiliate2_get_product_commission($account, $nid, $model = '') {
       }
     }
   }
-  return FALSE;
+
+  // Return a default object.
+  return (object)array(
+    'nid' => $nid,
+    'model' => NULL,
+    'commission_structure' => variable_get('affiliate_commission_structure', array('5%','3%','2%','2%','1%')),
+  );
 }
 
 /**
